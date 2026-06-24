@@ -1,0 +1,10 @@
+[sandbox_workspace_write]
+network_access = true
+
+[features]
+memories = true
+
+[memories]
+generate_memories = true
+use_memories = true
+disable_on_external_context = false
