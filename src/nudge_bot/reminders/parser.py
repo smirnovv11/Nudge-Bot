@@ -70,19 +70,29 @@ RUSSIAN_RELATIVE_PATTERNS = (
 RUSSIAN_DAY_PATTERN = re.compile(
     r"\b(?P<day>сегодня|завтра|послезавтра)\b"
     r"(?:\s+(?P<part>утром|днем|днём|вечером|ночью))?"
-    r"(?:\s+в\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
+    r"(?:\s+в\s+(?P<hour>\d{1,2})(?:(?::|\s+)(?P<minute>\d{2}))?"
     r"\s*(?P<modifier>утра|дня|вечера|ночи)?)?",
     re.IGNORECASE,
 )
 
 RUSSIAN_TIME_ONLY_PATTERNS = (
     re.compile(
+        r"\bв\s+(?P<hour>\d{1,2})\s+(?P<minute>\d{2})\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"\bв\s+(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?"
         r"\s*(?P<modifier>утра|дня|вечера|ночи)?\b",
         re.IGNORECASE,
     ),
     re.compile(r"\b(?P<hour>\d{1,2}):(?P<minute>\d{2})\b", re.IGNORECASE),
+    re.compile(
+        r"(?<!\d)(?P<hour>\d{1,2})\s+(?P<minute>\d{2})(?!\d)\s*$",
+        re.IGNORECASE,
+    ),
 )
+
+UNSUPPORTED_NUMERIC_DATEPARSER_PATTERN = re.compile(r"^\d{1,2}\s+\d{2,4}$")
 
 
 @dataclass(frozen=True)
@@ -289,20 +299,25 @@ def _match_with_dateparser(text: str, now: datetime, timezone: str) -> TemporalM
     if not matches:
         return None
 
-    matched_text, parsed_due_at = matches[-1]
-    start = text.lower().find(matched_text.lower())
-    if start < 0:
-        start = 0
-    end = start + len(matched_text)
-    parsed_due_at = _apply_colloquial_hour(parsed_due_at, matched_text)
-    confidence = _confidence_for_dateparser_match(matched_text)
-    return TemporalMatch(
-        matched_text=matched_text,
-        start=start,
-        end=end,
-        due_at=parsed_due_at,
-        confidence=confidence,
-    )
+    for matched_text, parsed_due_at in reversed(matches):
+        if _is_unsupported_numeric_dateparser_match(matched_text):
+            continue
+
+        start = text.lower().find(matched_text.lower())
+        if start < 0:
+            start = 0
+        end = start + len(matched_text)
+        parsed_due_at = _apply_colloquial_hour(parsed_due_at, matched_text)
+        confidence = _confidence_for_dateparser_match(matched_text)
+        return TemporalMatch(
+            matched_text=matched_text,
+            start=start,
+            end=end,
+            due_at=parsed_due_at,
+            confidence=confidence,
+        )
+
+    return None
 
 
 _TEMPORAL_RULES: tuple[TemporalRule, ...] = (
@@ -375,6 +390,10 @@ def _confidence_for_dateparser_match(matched_text: str) -> float:
     if _has_relative_offset(matched_text) or _has_explicit_time(matched_text):
         return 0.85
     return 0.6
+
+
+def _is_unsupported_numeric_dateparser_match(matched_text: str) -> bool:
+    return bool(UNSUPPORTED_NUMERIC_DATEPARSER_PATTERN.fullmatch(matched_text.strip()))
 
 
 def _has_relative_offset(text: str) -> bool:
