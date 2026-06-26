@@ -26,10 +26,11 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-24 18:28Z) Replaced free functions in storage with repository classes and introduced a Unit of Work boundary for application services.
 - [x] (2026-06-24 18:28Z) Added a lightweight text input strategy so future voice input can transcribe first and then reuse the same parser/service path.
 - [x] (2026-06-24 18:29Z) Mirrored the documented non-column indexes in SQLAlchemy model metadata and kept them in the baseline Alembic migration.
-- [ ] Implement reminder parsing and confidence rules. Current state: the parser contract exists with a basic `dateparser.search_dates` implementation and smoke tests; the confidence layer still needs fuller project-owned rules and multilingual coverage.
-- [ ] Implement aiogram bot handlers and typed callback data.
+- [x] (2026-06-26 00:00Z) Implemented the first project-owned parser rule layer for Russian reminder phrases, confidence rules, explicit note markers, and conflict handling.
+- [x] (2026-06-26 00:00Z) Implemented MVP draft-flow and aiogram text/draft handlers: confident parses create active reminders, uncertain parses create confirmation drafts, and draft callbacks support confirm/cancel.
+- [x] (2026-06-26 00:00Z) Hardened draft confirmation after review: draft confirm/cancel now lock draft rows, enforce `expires_at`, avoid Telegram API calls inside open Unit of Work contexts, and tolerate invalid stored timezones by falling back safely.
 - [ ] Implement the DB-backed polling worker.
-- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming.
+- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, and confirm/cancel idempotency tests exist; worker claiming and fired-reminder callbacks still need coverage.
 - [ ] Run local validation and document the observed behavior.
 
 ## Surprises & Discoveries
@@ -48,6 +49,12 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: The first schema migration already contains the documented indexes, so an extra corrective migration is unnecessary while local development is still on the first revision.
   Evidence: `20260624_1751_create_reminder_tables.py` creates the documented reminder, draft, callback, attempt, and user indexes; `storage.models` now also declares the non-column indexes in ORM metadata.
+
+- Observation: The bot-facing draft-flow needs a deliberate split between local parsing time and UTC persistence.
+  Evidence: `handle_text_reminder` parses with the user's timezone, stores `reminders.due_at` and `drafts.parsed_due_at` as UTC timestamps, and keeps the draft timezone in payload for user-facing callback formatting.
+
+- Observation: Sequential idempotency tests are not enough for Telegram callback safety.
+  Evidence: Review found that a plain draft `SELECT` allowed two concurrent confirm callbacks to see `pending` and create duplicate reminders; `DraftRepository.get_by_id_for_user_for_update` now locks the row inside the Unit of Work before confirm/cancel status decisions.
 
 ## Decision Log
 
@@ -91,9 +98,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: Text is the MVP input source. Future voice input can become a separate strategy that transcribes audio and then reuses the same parser, confidence layer, draft storage, and reminder service flow.
   Date/Author: 2026-06-24 / Codex
 
+- Decision: The first draft-flow implements `confirm` and `cancel` only, while omitting edit-time and edit-text buttons from the confirmation keyboard.
+  Rationale: This keeps the first Telegram-facing creation loop complete and testable without introducing a half-built edit state machine. Edit flows remain planned follow-up work.
+  Date/Author: 2026-06-26 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, and initial parser/config/service/model tests. The bot does not yet create reminders from Telegram messages, and the worker currently starts a polling loop without claiming or sending due reminders. The next useful implementation step is to turn the parser scaffold into the full project-owned confidence layer, then wire thin aiogram handlers to application services through Unit of Work middleware.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, MVP draft-flow services, and aiogram text/draft handlers. The bot can now create active reminders from confident text parses and confirmation drafts from uncertain parses. The worker still needs delivery behavior, and fired-reminder callbacks such as `Read`, `Repeat`, and `Choose time` still need to be wired to Telegram callbacks.
 
 ## Context and Orientation
 

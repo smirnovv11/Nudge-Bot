@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from nudge_bot.storage.models import User, UserSettings
 
@@ -12,7 +13,9 @@ class UserRepository:
 
     async def get_by_telegram_id(self, telegram_user_id: int) -> User | None:
         return await self._session.scalar(
-            select(User).where(User.telegram_user_id == telegram_user_id)
+            select(User)
+            .options(selectinload(User.settings))
+            .where(User.telegram_user_id == telegram_user_id)
         )
 
     async def get_or_create(
@@ -26,6 +29,8 @@ class UserRepository:
     ) -> User:
         user = await self.get_by_telegram_id(telegram_user_id)
         if user is not None:
+            user.username = username
+            user.locale = locale
             return user
 
         user = User(telegram_user_id=telegram_user_id, username=username, locale=locale)

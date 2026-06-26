@@ -19,5 +19,15 @@ class DraftRepository:
             .limit(1)
         )
 
+    async def get_by_id_for_user(self, *, draft_id: int, user_id: int) -> Draft | None:
+        return await self._session.scalar(
+            select(Draft).where(Draft.id == draft_id, Draft.user_id == user_id)
+        )
+
+    async def get_by_id_for_user_for_update(self, *, draft_id: int, user_id: int) -> Draft | None:
+        return await self._session.scalar(
+            select(Draft).where(Draft.id == draft_id, Draft.user_id == user_id).with_for_update()
+        )
+
     def add(self, draft: Draft) -> None:
         self._session.add(draft)
