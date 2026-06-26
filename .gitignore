@@ -7,3 +7,10 @@ __pycache__/
 .pre-commit-cache/
 .env
 .idea/
+
+AGENTS.md
+
+.omx
+.codex
+.agents
+.agent
