@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+from nudge_bot.bot.callbacks import ReminderDraftCallback
+from nudge_bot.bot.keyboards import draft_confirmation_keyboard
+from nudge_bot.bot.routers.reminders import (
+    format_draft_action_result,
+    format_text_reminder_result,
+)
+from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
+from nudge_bot.reminders.parser import ParsedReminderDraft
+from nudge_bot.reminders.service import DraftActionResult, TextReminderResult
+from nudge_bot.storage.models import Draft, Reminder
+
+
+def test_draft_confirmation_keyboard_packs_confirm_and_cancel_callbacks() -> None:
+    keyboard = draft_confirmation_keyboard(draft_id=42)
+
+    buttons = keyboard.inline_keyboard[0]
+    callbacks = [ReminderDraftCallback.unpack(button.callback_data) for button in buttons]
+
+    assert [button.text for button in buttons] == ["Create", "Cancel"]
+    assert callbacks == [
+        ReminderDraftCallback(action="confirm", draft_id=42),
+        ReminderDraftCallback(action="cancel", draft_id=42),
+    ]
+
+
+def test_text_result_format_for_created_reminder_is_user_facing() -> None:
+    due_at = datetime(2026, 6, 24, 12, 20, tzinfo=UTC)
+    result = TextReminderResult(
+        outcome="created",
+        user_id=10,
+        parsed=ParsedReminderDraft(
+            input_text="walk the dog in 20 minutes",
+            reminder_text="walk the dog",
+            due_at=due_at,
+            parse_confidence=0.9,
+            intent_kind="reminder",
+            needs_confirmation=False,
+        ),
+        display_timezone="Europe/Minsk",
+        reminder=Reminder(
+            user_id=10,
+            status=ReminderStatus.ACTIVE,
+            reminder_text="walk the dog",
+            due_at=due_at,
+        ),
+    )
+
+    message = format_text_reminder_result(result)
+
+    assert "Reminder created." in message
+    assert "walk the dog" in message
+    assert "parse_confidence" not in message
+    assert "metadata" not in message
+
+
+def test_text_result_format_for_pending_draft_is_user_facing() -> None:
+    due_at = datetime(2026, 6, 25, 12, 0, tzinfo=UTC)
+    result = TextReminderResult(
+        outcome="draft",
+        user_id=10,
+        parsed=ParsedReminderDraft(
+            input_text="pick up order tomorrow",
+            reminder_text="pick up order",
+            due_at=due_at,
+            parse_confidence=0.6,
+            intent_kind="reminder",
+            needs_confirmation=True,
+        ),
+        display_timezone="Europe/Minsk",
+        draft=Draft(
+            id=42,
+            user_id=10,
+            type=DraftType.REMINDER_CONFIRMATION,
+            status=DraftStatus.PENDING,
+            input_text="pick up order tomorrow",
+            parsed_text="pick up order",
+            parsed_due_at=due_at,
+            parse_confidence=0.6,
+            payload={},
+            expires_at=due_at + timedelta(hours=24),
+        ),
+    )
+
+    message = format_text_reminder_result(result)
+
+    assert "Create reminder?" in message
+    assert "pick up order" in message
+    assert "parse_confidence" not in message
+    assert "payload" not in message
+
+
+def test_draft_action_result_format_for_cancel_is_user_facing() -> None:
+    draft = Draft(
+        id=42,
+        user_id=10,
+        type=DraftType.REMINDER_CONFIRMATION,
+        status=DraftStatus.CANCELLED,
+        input_text="pick up order tomorrow",
+        parsed_text="pick up order",
+        parsed_due_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
+        parse_confidence=0.6,
+        payload={},
+        expires_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
+    )
+
+    message = format_draft_action_result(
+        DraftActionResult(outcome="cancelled", draft=draft, changed=True)
+    )
+
+    assert message == "Reminder draft cancelled."
+
+
+def test_draft_action_result_format_for_expired_is_user_facing() -> None:
+    draft = Draft(
+        id=42,
+        user_id=10,
+        type=DraftType.REMINDER_CONFIRMATION,
+        status=DraftStatus.EXPIRED,
+        input_text="pick up order tomorrow",
+        parsed_text="pick up order",
+        parsed_due_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
+        parse_confidence=0.6,
+        payload={},
+        expires_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
+    )
+
+    message = format_draft_action_result(
+        DraftActionResult(outcome="expired", draft=draft, changed=False)
+    )
+
+    assert message == "This reminder draft expired. Send the reminder again."
