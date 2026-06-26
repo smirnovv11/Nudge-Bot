@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from nudge_bot.reminders.enums import ReminderStatus
+from nudge_bot.reminders.enums import CallbackEventStatus, ReminderDeliveryStatus, ReminderStatus
 from nudge_bot.storage.models import Draft
 
 
@@ -15,6 +15,30 @@ class FakeReminder:
     due_at: datetime
     completed_at: datetime | None = None
     locked_at: datetime | None = None
+
+
+@dataclass
+class FakeReminderAttempt:
+    id: int
+    reminder_id: int
+    attempt_no: int
+    scheduled_for: datetime
+    delivery_status: ReminderDeliveryStatus
+    sent_at: datetime | None = None
+    telegram_message_id: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    next_retry_at: datetime | None = None
+
+
+@dataclass
+class FakeCallbackEvent:
+    user_id: int
+    reminder_id: int | None
+    callback_key: str
+    action: object
+    status: CallbackEventStatus
+    processed_at: datetime | None = None
 
 
 @dataclass
@@ -45,6 +69,8 @@ class FakeReminderRepository:
         self.reminder = reminder
         self.added: list[object] = []
         self.claim_due_called_with: tuple[int, datetime] | None = None
+        self.mark_delivery_sent_called_with: dict[str, object] | None = None
+        self.mark_delivery_failed_called_with: dict[str, object] | None = None
 
     async def claim_due(self, *, limit: int, now: datetime) -> list[object]:
         self.claim_due_called_with = (limit, now)
@@ -59,6 +85,63 @@ class FakeReminderRepository:
 
     def add(self, reminder: object) -> None:
         self.added.append(reminder)
+
+    async def mark_delivery_sent(self, *, reminder_id: int, now: datetime) -> None:
+        self.mark_delivery_sent_called_with = {"reminder_id": reminder_id, "now": now}
+        if self.reminder is not None and self.reminder.id == reminder_id:
+            self.reminder.status = ReminderStatus.SENT
+            self.reminder.locked_at = None
+
+    async def mark_delivery_failed(self, *, reminder_id: int) -> None:
+        self.mark_delivery_failed_called_with = {"reminder_id": reminder_id}
+        if self.reminder is not None and self.reminder.id == reminder_id:
+            self.reminder.status = ReminderStatus.ACTIVE
+            self.reminder.locked_at = None
+
+
+class FakeReminderAttemptRepository:
+    def __init__(self) -> None:
+        self.attempts: list[FakeReminderAttempt] = []
+
+    async def create_sending(
+        self,
+        *,
+        reminder_id: int,
+        scheduled_for: datetime,
+    ) -> FakeReminderAttempt:
+        attempt = FakeReminderAttempt(
+            id=len(self.attempts) + 1,
+            reminder_id=reminder_id,
+            attempt_no=len(self.attempts) + 1,
+            scheduled_for=scheduled_for,
+            delivery_status=ReminderDeliveryStatus.SENDING,
+        )
+        self.attempts.append(attempt)
+        return attempt
+
+    async def mark_sent(
+        self,
+        *,
+        attempt_id: int,
+        telegram_message_id: int,
+        sent_at: datetime,
+    ) -> None:
+        attempt = self.attempts[attempt_id - 1]
+        attempt.delivery_status = ReminderDeliveryStatus.SENT
+        attempt.telegram_message_id = telegram_message_id
+        attempt.sent_at = sent_at
+
+    async def mark_failed(
+        self,
+        *,
+        attempt_id: int,
+        error_code: str,
+        error_message: str,
+    ) -> None:
+        attempt = self.attempts[attempt_id - 1]
+        attempt.delivery_status = ReminderDeliveryStatus.FAILED
+        attempt.error_code = error_code
+        attempt.error_message = error_message
 
 
 class FakeDraftRepository:
@@ -115,6 +198,25 @@ class FakeUserRepository:
         self.user.locale = locale
         return self.user
 
+    async def get_by_telegram_id(self, telegram_user_id: int) -> FakeUser | None:
+        if self.user.telegram_user_id == telegram_user_id:
+            return self.user
+        return None
+
+
+class FakeCallbackEventRepository:
+    def __init__(self, event: FakeCallbackEvent | None = None) -> None:
+        self.event = event
+        self.added: list[object] = []
+
+    async def get_by_key(self, callback_key: str) -> object | None:
+        if self.event is not None and self.event.callback_key == callback_key:
+            return self.event
+        return None
+
+    def add(self, event: object) -> None:
+        self.added.append(event)
+
 
 class FakeUnitOfWork:
     def __init__(
@@ -123,9 +225,13 @@ class FakeUnitOfWork:
         *,
         drafts: FakeDraftRepository | None = None,
         users: FakeUserRepository | None = None,
+        attempts: FakeReminderAttemptRepository | None = None,
+        callback_events: FakeCallbackEventRepository | None = None,
         session: FakeSession | None = None,
     ) -> None:
         self.users = users or FakeUserRepository()
         self.reminders = reminders
         self.drafts = drafts or FakeDraftRepository()
+        self.attempts = attempts or FakeReminderAttemptRepository()
+        self.callback_events = callback_events or FakeCallbackEventRepository()
         self.session = session or FakeSession()

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from nudge_bot.config import Settings
 from nudge_bot.reminders.domain import ReminderResult, ReminderToSend
+from nudge_bot.reminders.enums import CallbackAction
 from nudge_bot.reminders.services import (
     DraftActionResult,
     DraftFlowService,
@@ -105,6 +106,27 @@ async def snooze(
 ) -> ReminderResult:
     return await _reminder_action_service.snooze(
         uow,
+        reminder_id=reminder_id,
+        user_id=user_id,
+        interval_minutes=interval_minutes,
+        now=now,
+    )
+
+
+async def process_callback_action(
+    uow: UnitOfWork,
+    *,
+    callback_key: str,
+    action: CallbackAction,
+    reminder_id: int,
+    user_id: int,
+    interval_minutes: int,
+    now: datetime | None = None,
+) -> ReminderResult:
+    return await _reminder_action_service.process_callback_action(
+        uow,
+        callback_key=callback_key,
+        action=action,
         reminder_id=reminder_id,
         user_id=user_id,
         interval_minutes=interval_minutes,

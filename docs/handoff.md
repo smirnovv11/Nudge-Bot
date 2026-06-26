@@ -18,9 +18,9 @@ MVP buttons on a fired reminder:
 
 - `Read`: mark the reminder completed/read, stop active repeats, keep history.
 - `Repeat`: repeat after the user's configured short-repeat interval.
-- `Choose time`: let the user choose a specific next reminder time.
+- `Choose time`: currently returns an MVP placeholder; the edit-time state machine is still deferred.
 
-If the user does not press any button, the bot should auto-repeat after the configured interval. Default repeat interval is 5 minutes.
+If the user does not press any button, future MVP work should auto-repeat after the configured interval. Default repeat interval is 5 minutes.
 
 ## MVP Non-Goals
 
@@ -117,7 +117,7 @@ Webhooks are reserved for later production deployment. A webhook means Telegram 
 
 Use aiogram CallbackData factories for inline button payloads instead of hand-built strings.
 
-Button actions must be idempotent. Repeated presses of `Read`, `Repeat`, or `Choose time` should not corrupt state or create duplicate repeats.
+Button actions must be idempotent. Repeated presses of `Read` or `Repeat` should not corrupt state or create duplicate repeats. Fired-reminder callbacks use a stable key shaped around reminder id, notification attempt id, and action.
 
 Use `callback_events.callback_key` as a unique logical action key. This supports idempotency and future per-user button rate limiting.
 
@@ -125,11 +125,8 @@ Use `callback_events.callback_key` as a unique logical action key. This supports
 
 Start from `.agent/execplans/tg-reminder-bot-mvp.md`.
 
-First implementation milestone:
+Next implementation milestone:
 
-1. Scaffold `pyproject.toml`, `src/nudge_bot`, `tests`, Ruff, and uv commands.
-2. Add `docker-compose.yml` for PostgreSQL infrastructure, then run `bot` and `worker` locally with uv.
-3. Add pydantic settings.
-4. Add SQLAlchemy models and Alembic migration matching `docs/database-schema.md`.
-5. Add initial parser tests before relying on Telegram manual testing.
-6. Continue from repository/Unit of Work boundaries when wiring bot handlers and worker jobs.
+1. Add automatic repeat when a delivered reminder remains `sent` with no user action.
+2. Implement the `Choose time` edit flow.
+3. Add integration coverage around PostgreSQL worker claiming and callback idempotency.

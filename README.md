@@ -19,7 +19,7 @@ The main user flow is:
 3. If parsing is confident, bot creates the reminder immediately.
 4. If parsing is uncertain, bot asks for a compact confirmation.
 5. When due time arrives, bot sends the reminder with `Read`, `Repeat`, and `Choose time` actions.
-6. If the user does nothing, the reminder repeats after the configured interval.
+6. `Read` completes the reminder, `Repeat` snoozes it by the configured interval, and `Choose time` currently returns an MVP placeholder.
 
 ## Selected Stack
 
@@ -92,8 +92,8 @@ The `bot` process receives Telegram updates through long polling. It is the part
 the user: `/start`, text messages, and inline button clicks.
 
 The `worker` process is the scheduler. It periodically checks PostgreSQL for due reminders and
-sends reminder notifications. Keeping it separate makes reminder delivery independent from
-Telegram message intake and lets both loops stay simple.
+sends reminder notifications with `Read`, `Repeat`, and `Choose time` buttons. Keeping it separate
+makes reminder delivery independent from Telegram message intake and lets both loops stay simple.
 
 For code checks, run:
 
