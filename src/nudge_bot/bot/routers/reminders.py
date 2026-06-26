@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
@@ -10,16 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from nudge_bot.bot.callbacks import ReminderDraftCallback
 from nudge_bot.bot.keyboards import draft_confirmation_keyboard
 from nudge_bot.config import Settings
-from nudge_bot.reminders.service import (
+from nudge_bot.reminders.services import DraftFlowService, TextReminderService
+from nudge_bot.reminders.services.schemas import (
     DraftActionResult,
     TextReminderResult,
-    cancel_draft,
-    confirm_draft,
-    handle_text_reminder,
 )
 from nudge_bot.storage.unit_of_work import unit_of_work
 
 router = Router(name="reminders")
+draft_flow_service = DraftFlowService()
+text_reminder_service = TextReminderService()
 
 
 @router.message(F.text)
@@ -32,7 +32,7 @@ async def handle_text_message(
         return
 
     async with unit_of_work(session_factory) as uow:
-        result = await handle_text_reminder(
+        result = await text_reminder_service.handle_text_reminder(
             uow,
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
@@ -67,7 +67,7 @@ async def handle_draft_callback(
             unavailable_message = "I could not find your reminder draft."
         elif callback_data.action == "confirm":
             try:
-                result = await confirm_draft(
+                result = await draft_flow_service.confirm_draft(
                     uow,
                     draft_id=callback_data.draft_id,
                     user_id=user.id,
@@ -77,7 +77,7 @@ async def handle_draft_callback(
                 unavailable_message = "This reminder draft is no longer available."
         else:
             try:
-                result = await cancel_draft(
+                result = await draft_flow_service.cancel_draft(
                     uow,
                     draft_id=callback_data.draft_id,
                     user_id=user.id,
@@ -137,5 +137,8 @@ def _format_datetime(value: datetime | None, timezone: object = None) -> str:
     if value is None:
         return "unknown"
     if isinstance(timezone, str):
-        value = value.astimezone(ZoneInfo(timezone))
+        try:
+            value = value.astimezone(ZoneInfo(timezone))
+        except ZoneInfoNotFoundError:
+            value = value.astimezone(ZoneInfo("UTC"))
     return value.strftime("%Y-%m-%d %H:%M")

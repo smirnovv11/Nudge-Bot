@@ -29,6 +29,7 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-26 00:00Z) Implemented the first project-owned parser rule layer for Russian reminder phrases, confidence rules, explicit note markers, and conflict handling.
 - [x] (2026-06-26 00:00Z) Implemented MVP draft-flow and aiogram text/draft handlers: confident parses create active reminders, uncertain parses create confirmation drafts, and draft callbacks support confirm/cancel.
 - [x] (2026-06-26 00:00Z) Hardened draft confirmation after review: draft confirm/cancel now lock draft rows, enforce `expires_at`, avoid Telegram API calls inside open Unit of Work contexts, and tolerate invalid stored timezones by falling back safely.
+- [x] (2026-06-26 00:00Z) Refactored reminder application services into class-based service modules, moved service result schemas into a dedicated module, kept a compatibility facade for existing imports, and reorganized tests by bot, config, storage, parser, and service layer.
 - [ ] Implement the DB-backed polling worker.
 - [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, and confirm/cancel idempotency tests exist; worker claiming and fired-reminder callbacks still need coverage.
 - [ ] Run local validation and document the observed behavior.
@@ -102,9 +103,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: This keeps the first Telegram-facing creation loop complete and testable without introducing a half-built edit state machine. Edit flows remain planned follow-up work.
   Date/Author: 2026-06-26 / Codex
 
+- Decision: Split reminder application services by workflow while preserving `nudge_bot.reminders.service` as a thin compatibility facade.
+  Rationale: Text intake, draft confirmation, fired-reminder actions, and worker claiming have different owners and test surfaces. Class-based modules keep dependency injection straightforward without forcing handlers or workers to know SQLAlchemy details.
+  Date/Author: 2026-06-26 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, MVP draft-flow services, and aiogram text/draft handlers. The bot can now create active reminders from confident text parses and confirmation drafts from uncertain parses. The worker still needs delivery behavior, and fired-reminder callbacks such as `Read`, `Repeat`, and `Choose time` still need to be wired to Telegram callbacks.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, and aiogram text/draft handlers. The bot can now create active reminders from confident text parses and confirmation drafts from uncertain parses. The worker still needs delivery behavior, and fired-reminder callbacks such as `Read`, `Repeat`, and `Choose time` still need to be wired to Telegram callbacks.
 
 ## Context and Orientation
 
