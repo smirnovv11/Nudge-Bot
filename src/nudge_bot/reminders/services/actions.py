@@ -102,6 +102,16 @@ class ReminderActionService:
             )
             if reminder is None:
                 raise LookupError("reminder not found")
+
+            if action == CallbackAction.REPEAT and reminder.due_at <= now:
+                return await self.snooze(
+                    uow,
+                    reminder_id=reminder_id,
+                    user_id=user_id,
+                    interval_minutes=interval_minutes,
+                    now=now,
+                )
+
             return ReminderResult(
                 reminder_id=reminder_id,
                 status=reminder.status,

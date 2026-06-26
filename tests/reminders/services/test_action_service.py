@@ -101,6 +101,42 @@ async def test_repeated_repeat_callback_does_not_move_due_time_twice() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repeated_repeat_callback_reschedules_stale_due_time_from_now() -> None:
+    previous_due_at = datetime(2026, 6, 26, 21, 46, tzinfo=UTC)
+    now = datetime(2026, 6, 27, 0, 41, tzinfo=UTC)
+    reminder = FakeReminder(
+        id=1,
+        user_id=10,
+        status=ReminderStatus.SNOOZED,
+        due_at=previous_due_at,
+    )
+    event = FakeCallbackEvent(
+        user_id=10,
+        reminder_id=1,
+        callback_key="reminder:1:notification:7:action:repeat",
+        action=CallbackAction.REPEAT,
+        status=CallbackEventStatus.PROCESSED,
+    )
+
+    result = await ReminderActionService().process_callback_action(
+        FakeUnitOfWork(
+            FakeReminderRepository(reminder),
+            callback_events=FakeCallbackEventRepository(event),
+        ),
+        callback_key="reminder:1:notification:7:action:repeat",
+        action=CallbackAction.REPEAT,
+        reminder_id=1,
+        user_id=10,
+        interval_minutes=5,
+        now=now,
+    )
+
+    assert result.changed is True
+    assert reminder.status == ReminderStatus.SNOOZED
+    assert reminder.due_at == now + timedelta(minutes=5)
+
+
+@pytest.mark.asyncio
 async def test_repeat_callback_snoozes_once_and_records_event() -> None:
     now = datetime(2026, 6, 24, 12, 0, tzinfo=UTC)
     reminder = FakeReminder(

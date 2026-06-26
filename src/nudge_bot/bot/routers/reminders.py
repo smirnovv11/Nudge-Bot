@@ -118,6 +118,7 @@ async def handle_reminder_action_callback(
 
     result: ReminderResult | None = None
     unavailable_message: str | None = None
+    display_timezone: str | None = None
     callback_key = reminder_action_callback_key(callback_data, callback.id)
 
     try:
@@ -126,6 +127,7 @@ async def handle_reminder_action_callback(
             if user is None:
                 unavailable_message = "🙈 I could not find this reminder"
             else:
+                display_timezone = user.settings.timezone
                 result = await reminder_action_service.process_callback_action(
                     uow,
                     callback_key=callback_key,
@@ -154,7 +156,7 @@ async def handle_reminder_action_callback(
 
     await callback.answer()
     if result is not None and isinstance(callback.message, Message):
-        await callback.message.edit_text(format_reminder_action_result(result))
+        await callback.message.edit_text(format_reminder_action_result(result, display_timezone))
 
 
 def format_text_reminder_result(result: TextReminderResult) -> str:
@@ -195,12 +197,15 @@ def format_draft_action_result(result: DraftActionResult) -> str:
     return "✖️ This reminder draft was already cancelled"
 
 
-def format_reminder_action_result(result: ReminderResult) -> str:
+def format_reminder_action_result(
+    result: ReminderResult,
+    display_timezone: str | None = None,
+) -> str:
     if result.status.value == "completed":
         return "✅ Reminder completed"
 
     if result.status.value == "snoozed":
-        return f"🔁 Reminder repeated\n🕒 {_format_datetime(result.due_at)}"
+        return f"🔁 Reminder repeated\n🕒 {_format_datetime(result.due_at, display_timezone)}"
 
     return "👌 Reminder already handled"
 

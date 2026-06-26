@@ -196,6 +196,22 @@ def test_reminder_action_result_format_is_user_facing() -> None:
     )
 
 
+def test_reminder_action_result_format_uses_display_timezone() -> None:
+    repeated_at = datetime(2026, 6, 25, 21, 5, tzinfo=UTC)
+
+    message = format_reminder_action_result(
+        ReminderResult(
+            reminder_id=42,
+            status=ReminderStatus.SNOOZED,
+            changed=True,
+            due_at=repeated_at,
+        ),
+        "Europe/Minsk",
+    )
+
+    assert message == "🔁 Reminder repeated\n🕒 2026-06-26 00:05"
+
+
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:
     callback_data = ReminderActionCallback(
         action="repeat",

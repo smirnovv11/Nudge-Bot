@@ -38,3 +38,5 @@ Use aiogram CallbackData factories for inline button payloads instead of hand-bu
 Treat Telegram delivery retry and user reminder repeat as separate concepts. A failed Telegram API send should be retried as delivery. A delivered notification with no user action should create the next reminder fire time.
 
 Avoid logging full reminder text unless explicitly needed for local debugging. Prefer ids, statuses, timestamps, and short structured events.
+
+Separate logical blocks of code with a blank line for readability.
