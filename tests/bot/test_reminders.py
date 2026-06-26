@@ -10,7 +10,7 @@ from nudge_bot.bot.routers.reminders import (
 )
 from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
 from nudge_bot.reminders.parser import ParsedReminderDraft
-from nudge_bot.reminders.service import DraftActionResult, TextReminderResult
+from nudge_bot.reminders.services.schemas import DraftActionResult, TextReminderResult
 from nudge_bot.storage.models import Draft, Reminder
 
 
@@ -133,3 +133,25 @@ def test_draft_action_result_format_for_expired_is_user_facing() -> None:
     )
 
     assert message == "This reminder draft expired. Send the reminder again."
+
+
+def test_draft_action_result_format_falls_back_for_invalid_timezone() -> None:
+    due_at = datetime(2026, 6, 25, 12, 0, tzinfo=UTC)
+    reminder = Reminder(
+        user_id=10,
+        status=ReminderStatus.ACTIVE,
+        reminder_text="pick up order",
+        due_at=due_at,
+    )
+
+    message = format_draft_action_result(
+        DraftActionResult(
+            outcome="confirmed",
+            draft=None,
+            reminder=reminder,
+            changed=True,
+            display_timezone="Bad/Timezone",
+        )
+    )
+
+    assert message == "Reminder created.\nText: pick up order\nWhen: 2026-06-25 12:00"
