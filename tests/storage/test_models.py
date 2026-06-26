@@ -62,3 +62,8 @@ def test_orm_models_define_documented_extra_indexes() -> None:
 
     for model, index_names in expected.items():
         assert index_names <= {index.name for index in model.__table__.indexes}
+
+
+def test_callback_events_has_timestamp_mixin_columns() -> None:
+    assert "created_at" in CallbackEvent.__table__.c
+    assert "updated_at" in CallbackEvent.__table__.c

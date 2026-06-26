@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from nudge_bot.reminders.domain import ReminderResult
-from nudge_bot.reminders.enums import ReminderStatus
+from nudge_bot.reminders.enums import CallbackAction, CallbackEventStatus, ReminderStatus
+from nudge_bot.storage.models import CallbackEvent
 from nudge_bot.storage.unit_of_work import UnitOfWork
 
 
@@ -30,6 +31,7 @@ class ReminderActionService:
                 reminder_id=reminder_id,
                 status=ReminderStatus.COMPLETED,
                 changed=False,
+                due_at=reminder.due_at,
             )
 
         reminder.status = ReminderStatus.COMPLETED
@@ -40,6 +42,7 @@ class ReminderActionService:
             reminder_id=reminder_id,
             status=ReminderStatus.COMPLETED,
             changed=True,
+            due_at=reminder.due_at,
         )
 
     async def snooze(
@@ -65,6 +68,7 @@ class ReminderActionService:
                 reminder_id=reminder_id,
                 status=ReminderStatus.COMPLETED,
                 changed=False,
+                due_at=reminder.due_at,
             )
 
         reminder.status = ReminderStatus.SNOOZED
@@ -75,4 +79,71 @@ class ReminderActionService:
             reminder_id=reminder_id,
             status=ReminderStatus.SNOOZED,
             changed=True,
+            due_at=reminder.due_at,
         )
+
+    async def process_callback_action(
+        self,
+        uow: UnitOfWork,
+        *,
+        callback_key: str,
+        action: CallbackAction,
+        reminder_id: int,
+        user_id: int,
+        interval_minutes: int,
+        now: datetime | None = None,
+    ) -> ReminderResult:
+        now = now or datetime.now(UTC)
+        existing_event = await uow.callback_events.get_by_key(callback_key)
+        if existing_event is not None:
+            reminder = await uow.reminders.get_by_id_for_user(
+                reminder_id=reminder_id,
+                user_id=user_id,
+            )
+            if reminder is None:
+                raise LookupError("reminder not found")
+            return ReminderResult(
+                reminder_id=reminder_id,
+                status=reminder.status,
+                changed=False,
+                due_at=reminder.due_at,
+            )
+
+        event = CallbackEvent(
+            user_id=user_id,
+            reminder_id=reminder_id,
+            callback_key=callback_key,
+            action=action,
+            status=CallbackEventStatus.RECEIVED,
+        )
+        uow.callback_events.add(event)
+
+        try:
+            if action == CallbackAction.READ:
+                result = await self.mark_completed(
+                    uow,
+                    reminder_id=reminder_id,
+                    user_id=user_id,
+                    now=now,
+                )
+            elif action == CallbackAction.REPEAT:
+                result = await self.snooze(
+                    uow,
+                    reminder_id=reminder_id,
+                    user_id=user_id,
+                    interval_minutes=interval_minutes,
+                    now=now,
+                )
+            else:
+                result = ReminderResult(
+                    reminder_id=reminder_id,
+                    status=ReminderStatus.SENT,
+                    changed=False,
+                )
+        except Exception:
+            event.status = CallbackEventStatus.FAILED
+            raise
+
+        event.status = CallbackEventStatus.PROCESSED
+        event.processed_at = now
+        return result

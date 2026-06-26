@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from nudge_bot.bot.callbacks import ReminderDraftCallback
-from nudge_bot.bot.keyboards import draft_confirmation_keyboard
+from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallback
+from nudge_bot.bot.keyboards import draft_confirmation_keyboard, reminder_actions_keyboard
 from nudge_bot.bot.routers.reminders import (
     format_draft_action_result,
+    format_reminder_action_result,
     format_text_reminder_result,
+    reminder_action_callback_key,
 )
+from nudge_bot.reminders.domain import ReminderResult
 from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
 from nudge_bot.reminders.parser import ParsedReminderDraft
 from nudge_bot.reminders.services.schemas import DraftActionResult, TextReminderResult
@@ -20,10 +23,24 @@ def test_draft_confirmation_keyboard_packs_confirm_and_cancel_callbacks() -> Non
     buttons = keyboard.inline_keyboard[0]
     callbacks = [ReminderDraftCallback.unpack(button.callback_data) for button in buttons]
 
-    assert [button.text for button in buttons] == ["Create", "Cancel"]
+    assert [button.text for button in buttons] == ["✅ Create", "✖️ Cancel"]
     assert callbacks == [
         ReminderDraftCallback(action="confirm", draft_id=42),
         ReminderDraftCallback(action="cancel", draft_id=42),
+    ]
+
+
+def test_reminder_actions_keyboard_packs_fired_reminder_callbacks() -> None:
+    keyboard = reminder_actions_keyboard(reminder_id=42, notification_id=7)
+
+    buttons = keyboard.inline_keyboard[0]
+    callbacks = [ReminderActionCallback.unpack(button.callback_data) for button in buttons]
+
+    assert [button.text for button in buttons] == ["✅ Read", "🔁 Repeat", "🕒 Choose time"]
+    assert callbacks == [
+        ReminderActionCallback(action="read", reminder_id=42, notification_id=7),
+        ReminderActionCallback(action="repeat", reminder_id=42, notification_id=7),
+        ReminderActionCallback(action="choose_time", reminder_id=42, notification_id=7),
     ]
 
 
@@ -51,7 +68,7 @@ def test_text_result_format_for_created_reminder_is_user_facing() -> None:
 
     message = format_text_reminder_result(result)
 
-    assert "Reminder created." in message
+    assert "✅ Reminder created" in message
     assert "walk the dog" in message
     assert "parse_confidence" not in message
     assert "metadata" not in message
@@ -87,7 +104,7 @@ def test_text_result_format_for_pending_draft_is_user_facing() -> None:
 
     message = format_text_reminder_result(result)
 
-    assert "Create reminder?" in message
+    assert "✨ Create this reminder?" in message
     assert "pick up order" in message
     assert "parse_confidence" not in message
     assert "payload" not in message
@@ -111,7 +128,7 @@ def test_draft_action_result_format_for_cancel_is_user_facing() -> None:
         DraftActionResult(outcome="cancelled", draft=draft, changed=True)
     )
 
-    assert message == "Reminder draft cancelled."
+    assert message == "✖️ Reminder draft cancelled"
 
 
 def test_draft_action_result_format_for_expired_is_user_facing() -> None:
@@ -132,7 +149,7 @@ def test_draft_action_result_format_for_expired_is_user_facing() -> None:
         DraftActionResult(outcome="expired", draft=draft, changed=False)
     )
 
-    assert message == "This reminder draft expired. Send the reminder again."
+    assert message == "⌛ This reminder draft expired\nSend the reminder again"
 
 
 def test_draft_action_result_format_falls_back_for_invalid_timezone() -> None:
@@ -154,4 +171,39 @@ def test_draft_action_result_format_falls_back_for_invalid_timezone() -> None:
         )
     )
 
-    assert message == "Reminder created.\nText: pick up order\nWhen: 2026-06-25 12:00"
+    assert message == "✅ Reminder created\n\n📝 pick up order\n🕒 2026-06-25 12:00"
+
+
+def test_reminder_action_result_format_is_user_facing() -> None:
+    repeated_at = datetime(2026, 6, 25, 12, 5, tzinfo=UTC)
+
+    assert (
+        format_reminder_action_result(
+            ReminderResult(
+                reminder_id=42,
+                status=ReminderStatus.SNOOZED,
+                changed=True,
+                due_at=repeated_at,
+            )
+        )
+        == "🔁 Reminder repeated\n🕒 2026-06-25 12:05"
+    )
+    assert (
+        format_reminder_action_result(
+            ReminderResult(reminder_id=42, status=ReminderStatus.COMPLETED, changed=True)
+        )
+        == "✅ Reminder completed"
+    )
+
+
+def test_reminder_action_callback_key_is_stable_for_notification() -> None:
+    callback_data = ReminderActionCallback(
+        action="repeat",
+        reminder_id=42,
+        notification_id=7,
+    )
+
+    assert (
+        reminder_action_callback_key(callback_data, "telegram-callback-id")
+        == "reminder:42:notification:7:action:repeat"
+    )

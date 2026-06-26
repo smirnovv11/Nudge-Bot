@@ -30,8 +30,11 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-26 00:00Z) Implemented MVP draft-flow and aiogram text/draft handlers: confident parses create active reminders, uncertain parses create confirmation drafts, and draft callbacks support confirm/cancel.
 - [x] (2026-06-26 00:00Z) Hardened draft confirmation after review: draft confirm/cancel now lock draft rows, enforce `expires_at`, avoid Telegram API calls inside open Unit of Work contexts, and tolerate invalid stored timezones by falling back safely.
 - [x] (2026-06-26 00:00Z) Refactored reminder application services into class-based service modules, moved service result schemas into a dedicated module, kept a compatibility facade for existing imports, and reorganized tests by bot, config, storage, parser, and service layer.
-- [ ] Implement the DB-backed polling worker.
-- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, and confirm/cancel idempotency tests exist; worker claiming and fired-reminder callbacks still need coverage.
+- [x] (2026-06-26 00:00Z) Implemented the first DB-backed worker delivery loop: due reminders are claimed, sent through Telegram with fired-reminder buttons, delivery attempts are recorded, success marks reminders `sent`, and send failures return reminders to `active` for a later tick.
+- [x] (2026-06-26 00:00Z) Added fired-reminder callback handling for `Read`, `Repeat`, and MVP-placeholder `Choose time`; `Read` completes reminders, `Repeat` snoozes by the user's repeat interval, and stable callback keys prevent one notification button event from applying twice.
+- [ ] Implement auto-repeat for delivered reminders that remain `sent` with no user action.
+- [ ] Implement the `Choose time` edit flow.
+- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, confirm/cancel idempotency, worker tick, delivery success/failure, and fired-reminder callback idempotency tests exist; PostgreSQL-backed integration coverage still needs to be added.
 - [ ] Run local validation and document the observed behavior.
 
 ## Surprises & Discoveries
@@ -107,9 +110,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: Text intake, draft confirmation, fired-reminder actions, and worker claiming have different owners and test surfaces. Class-based modules keep dependency injection straightforward without forcing handlers or workers to know SQLAlchemy details.
   Date/Author: 2026-06-26 / Codex
 
+- Decision: The first worker implementation sends fired reminders and handles `Read`/`Repeat`, while `Choose time` remains a placeholder and no-action auto-repeat is deferred.
+  Rationale: Delivery and button idempotency are the smallest end-to-end slice needed to manually test reminders in Telegram. The edit-time state machine and unattended repeat policy can be added after the delivery path is observable and tested.
+  Date/Author: 2026-06-26 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, and aiogram text/draft handlers. The bot can now create active reminders from confident text parses and confirmation drafts from uncertain parses. The worker still needs delivery behavior, and fired-reminder callbacks such as `Read`, `Repeat`, and `Choose time` still need to be wired to Telegram callbacks.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, and fired-reminder callbacks. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, and snooze them with `Repeat`. Auto-repeat with no user action and the full `Choose time` edit flow still need to be implemented.
 
 ## Context and Orientation
 

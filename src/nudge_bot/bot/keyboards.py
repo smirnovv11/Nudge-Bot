@@ -13,7 +13,7 @@ def reminder_actions_keyboard(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Read",
+                    text="✅ Read",
                     callback_data=ReminderActionCallback(
                         action="read",
                         reminder_id=reminder_id,
@@ -21,7 +21,7 @@ def reminder_actions_keyboard(
                     ).pack(),
                 ),
                 InlineKeyboardButton(
-                    text="Repeat",
+                    text="🔁 Repeat",
                     callback_data=ReminderActionCallback(
                         action="repeat",
                         reminder_id=reminder_id,
@@ -29,7 +29,7 @@ def reminder_actions_keyboard(
                     ).pack(),
                 ),
                 InlineKeyboardButton(
-                    text="Choose time",
+                    text="🕒 Choose time",
                     callback_data=ReminderActionCallback(
                         action="choose_time",
                         reminder_id=reminder_id,
@@ -46,11 +46,11 @@ def draft_confirmation_keyboard(draft_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Create",
+                    text="✅ Create",
                     callback_data=ReminderDraftCallback(action="confirm", draft_id=draft_id).pack(),
                 ),
                 InlineKeyboardButton(
-                    text="Cancel",
+                    text="✖️ Cancel",
                     callback_data=ReminderDraftCallback(action="cancel", draft_id=draft_id).pack(),
                 ),
             ]

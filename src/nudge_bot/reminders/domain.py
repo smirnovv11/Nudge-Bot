@@ -10,6 +10,7 @@ from nudge_bot.reminders.enums import ReminderStatus
 class ReminderToSend:
     reminder_id: int
     user_id: int
+    telegram_user_id: int
     reminder_text: str
     due_at: datetime
 
@@ -19,3 +20,11 @@ class ReminderResult:
     reminder_id: int
     status: ReminderStatus
     changed: bool
+    due_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ReminderDeliveryAttempt:
+    id: int
+    reminder_id: int
+    attempt_no: int

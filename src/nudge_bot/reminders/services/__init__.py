@@ -1,4 +1,5 @@
 from nudge_bot.reminders.services.actions import ReminderActionService
+from nudge_bot.reminders.services.delivery import ReminderDeliveryService
 from nudge_bot.reminders.services.drafts import DraftFlowService
 from nudge_bot.reminders.services.intake import TextReminderService
 from nudge_bot.reminders.services.scheduler import ReminderSchedulerService
@@ -14,6 +15,7 @@ __all__ = [
     "DraftActionResult",
     "DraftFlowService",
     "ReminderActionService",
+    "ReminderDeliveryService",
     "ReminderSchedulerService",
     "TextReminderOutcome",
     "TextReminderResult",
