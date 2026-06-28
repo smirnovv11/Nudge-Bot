@@ -116,6 +116,7 @@ async def deliver_reminder(
             reminder_id=reminder.reminder_id,
             attempt_id=attempt.id,
             telegram_message_id=message.message_id,
+            repeat_interval_minutes=reminder.repeat_interval_minutes,
             now=datetime.now(UTC),
         )
 

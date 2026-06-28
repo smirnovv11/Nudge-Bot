@@ -31,6 +31,7 @@ class ReminderDeliveryService:
         reminder_id: int,
         attempt_id: int,
         telegram_message_id: int,
+        repeat_interval_minutes: int,
         now: datetime,
     ) -> None:
         await uow.attempts.mark_sent(
@@ -38,7 +39,11 @@ class ReminderDeliveryService:
             telegram_message_id=telegram_message_id,
             sent_at=now,
         )
-        await uow.reminders.mark_delivery_sent(reminder_id=reminder_id, now=now)
+        await uow.reminders.mark_delivery_sent(
+            reminder_id=reminder_id,
+            now=now,
+            repeat_interval_minutes=repeat_interval_minutes,
+        )
 
     async def mark_failed(
         self,

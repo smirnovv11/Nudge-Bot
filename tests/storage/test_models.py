@@ -64,6 +64,17 @@ def test_orm_models_define_documented_extra_indexes() -> None:
         assert index_names <= {index.name for index in model.__table__.indexes}
 
 
+def test_due_deliverable_index_includes_sent_for_auto_repeat() -> None:
+    due_index = next(
+        index
+        for index in Reminder.__table__.indexes
+        if index.name == "reminders_due_deliverable_idx"
+    )
+    predicate = str(due_index.dialect_options["postgresql"]["where"])
+
+    assert "status IN ('active', 'snoozed', 'sent')" in predicate
+
+
 def test_callback_events_has_timestamp_mixin_columns() -> None:
     assert "created_at" in CallbackEvent.__table__.c
     assert "updated_at" in CallbackEvent.__table__.c

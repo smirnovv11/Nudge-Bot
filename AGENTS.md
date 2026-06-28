@@ -39,4 +39,6 @@ Treat Telegram delivery retry and user reminder repeat as separate concepts. A f
 
 Avoid logging full reminder text unless explicitly needed for local debugging. Prefer ids, statuses, timestamps, and short structured events.
 
+Avoid magic numbers and duplicated default values. Shared product and runtime defaults, such as repeat intervals, scheduler polling intervals, draft expiration windows, and default timezone, belong in the dedicated constants package under `src/nudge_bot/constants/` and should be imported by application code and tests.
+
 Separate logical blocks of code with a blank line for readability.

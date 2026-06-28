@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from aiogram.exceptions import AiogramError
 
+from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.domain import ReminderToSend
 from nudge_bot.reminders.enums import ReminderStatus
 from nudge_bot.worker import main as worker_main
@@ -59,6 +60,7 @@ async def test_worker_tick_sends_claimed_reminder(monkeypatch: pytest.MonkeyPatc
         telegram_user_id=100,
         reminder_text="walk the dog",
         due_at=now,
+        repeat_interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
     )
     reminder = FakeReminder(
         id=1,
@@ -91,6 +93,11 @@ async def test_worker_tick_sends_claimed_reminder(monkeypatch: pytest.MonkeyPatc
     assert bot.sent_messages[0]["chat_id"] == 100
     assert bot.sent_messages[0]["text"] == "🔔 Reminder\n\nwalk the dog"
     assert reminder.status == ReminderStatus.SENT
+    assert delivery_uow.reminders.mark_delivery_sent_called_with is not None
+    assert (
+        delivery_uow.reminders.mark_delivery_sent_called_with["repeat_interval_minutes"]
+        == DEFAULT_REPEAT_INTERVAL_MINUTES
+    )
     assert delivery_uow.attempts.attempts[0].telegram_message_id == 1001
 
 
@@ -103,6 +110,7 @@ async def test_worker_tick_records_send_failure(monkeypatch: pytest.MonkeyPatch)
         telegram_user_id=100,
         reminder_text="walk the dog",
         due_at=now,
+        repeat_interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
     )
     reminder = FakeReminder(
         id=1,

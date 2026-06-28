@@ -13,6 +13,7 @@ class ReminderToSend:
     telegram_user_id: int
     reminder_text: str
     due_at: datetime
+    repeat_interval_minutes: int
 
 
 @dataclass(frozen=True)

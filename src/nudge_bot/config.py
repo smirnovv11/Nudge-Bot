@@ -5,7 +5,7 @@ from functools import lru_cache
 from pydantic import Field, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from nudge_bot.common.constants import (
+from nudge_bot.constants import (
     DEFAULT_REPEAT_INTERVAL_MINUTES,
     DEFAULT_TIMEZONE,
     SCHEDULER_POLL_INTERVAL_SECONDS,

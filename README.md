@@ -20,6 +20,7 @@ The main user flow is:
 4. If parsing is uncertain, bot asks for a compact confirmation.
 5. When due time arrives, bot sends the reminder with `Read`, `Repeat`, and `Choose time` actions.
 6. `Read` completes the reminder, `Repeat` snoozes it by the configured interval, and `Choose time` currently returns an MVP placeholder.
+7. If the user does not press any button, the worker automatically sends the reminder again after the configured repeat interval.
 
 ## Selected Stack
 

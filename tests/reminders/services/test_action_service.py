@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.enums import CallbackAction, CallbackEventStatus, ReminderStatus
 from nudge_bot.reminders.services import ReminderActionService
 
@@ -54,21 +55,21 @@ async def test_snooze_updates_due_time_for_active_reminder() -> None:
         FakeUnitOfWork(FakeReminderRepository(reminder)),
         reminder_id=1,
         user_id=10,
-        interval_minutes=5,
+        interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
         now=now,
     )
 
     assert result.status == ReminderStatus.SNOOZED
     assert result.changed is True
     assert reminder.status == ReminderStatus.SNOOZED
-    assert reminder.due_at == now + timedelta(minutes=5)
+    assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
     assert reminder.locked_at is None
 
 
 @pytest.mark.asyncio
 async def test_repeated_repeat_callback_does_not_move_due_time_twice() -> None:
     now = datetime(2026, 6, 24, 12, 0, tzinfo=UTC)
-    due_at = now + timedelta(minutes=5)
+    due_at = now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
     reminder = FakeReminder(
         id=1,
         user_id=10,
@@ -92,7 +93,7 @@ async def test_repeated_repeat_callback_does_not_move_due_time_twice() -> None:
         action=CallbackAction.REPEAT,
         reminder_id=1,
         user_id=10,
-        interval_minutes=5,
+        interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
         now=now + timedelta(minutes=1),
     )
 
@@ -127,13 +128,13 @@ async def test_repeated_repeat_callback_reschedules_stale_due_time_from_now() ->
         action=CallbackAction.REPEAT,
         reminder_id=1,
         user_id=10,
-        interval_minutes=5,
+        interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
         now=now,
     )
 
     assert result.changed is True
     assert reminder.status == ReminderStatus.SNOOZED
-    assert reminder.due_at == now + timedelta(minutes=5)
+    assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
 
 
 @pytest.mark.asyncio
@@ -157,11 +158,11 @@ async def test_repeat_callback_snoozes_once_and_records_event() -> None:
         action=CallbackAction.REPEAT,
         reminder_id=1,
         user_id=10,
-        interval_minutes=5,
+        interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
         now=now,
     )
 
     assert result.changed is True
     assert reminder.status == ReminderStatus.SNOOZED
-    assert reminder.due_at == now + timedelta(minutes=5)
+    assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
     assert callback_events.added[0].status == CallbackEventStatus.PROCESSED

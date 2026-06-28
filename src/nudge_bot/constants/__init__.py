@@ -1,4 +1,4 @@
-from nudge_bot.constants import (
+from nudge_bot.constants.defaults import (
     DEFAULT_REPEAT_INTERVAL_MINUTES,
     DEFAULT_TIMEZONE,
     DRAFT_EXPIRATION_HOURS,

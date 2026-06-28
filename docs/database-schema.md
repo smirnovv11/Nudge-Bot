@@ -172,9 +172,11 @@ Use PostgreSQL enum types for bounded state and category fields instead of free 
 
 The worker finds due reminders with a query shaped like:
 
-    status IN ('active', 'snoozed')
+    status IN ('active', 'snoozed', 'sent')
     AND due_at <= now()
     AND archived_at IS NULL
+
+For auto-repeat, `sent` reminders use `due_at` as the next unattended repeat time. When a notification is delivered successfully, the worker leaves the reminder in `sent` and moves `due_at` forward by `user_settings.repeat_interval_minutes`. If the user presses `Read`, the reminder becomes `completed` and stops being claimable.
 
 The worker should claim rows atomically before sending. In PostgreSQL, the implementation can use a transaction with row locking such as `FOR UPDATE SKIP LOCKED`, or a single conditional update that sets `status = sending` and `locked_at = now()`.
 
@@ -216,14 +218,14 @@ Use a partial btree index for reminders the worker can deliver:
     CREATE INDEX reminders_due_deliverable_idx
     ON reminders (due_at, id)
     WHERE archived_at IS NULL
-      AND status IN ('active', 'snoozed');
+      AND status IN ('active', 'snoozed', 'sent');
 
 Purpose: the scheduler worker repeatedly asks, "which reminders are due now?" This is the hottest MVP query:
 
     SELECT *
     FROM reminders
     WHERE archived_at IS NULL
-      AND status IN ('active', 'snoozed')
+      AND status IN ('active', 'snoozed', 'sent')
       AND due_at <= now()
     ORDER BY due_at, id
     LIMIT 100;
