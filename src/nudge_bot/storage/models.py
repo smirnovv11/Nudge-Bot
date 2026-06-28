@@ -213,6 +213,12 @@ class Draft(TimestampMixin, Base):
             "expires_at",
             postgresql_where=text("status = 'pending'"),
         ),
+        Index(
+            "drafts_user_pending_edit_time_uidx",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND type = 'reminder_edit_time'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

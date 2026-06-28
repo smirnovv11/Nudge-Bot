@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.domain import ReminderToSend
-from nudge_bot.reminders.enums import ReminderStatus
-from nudge_bot.storage.models import Reminder, User, UserSettings
+from nudge_bot.reminders.draft_payloads import EDIT_TIME_REMINDER_ID
+from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
+from nudge_bot.storage.models import Draft, Reminder, User, UserSettings
 
 DELIVERABLE_STATUSES = [
     ReminderStatus.ACTIVE,
@@ -28,6 +29,15 @@ class ReminderRepository:
                 Reminder.archived_at.is_(None),
                 Reminder.status.in_(DELIVERABLE_STATUSES),
                 Reminder.due_at <= now,
+                ~select(Draft.id)
+                .where(
+                    Draft.user_id == Reminder.user_id,
+                    Draft.type == DraftType.REMINDER_EDIT_TIME,
+                    Draft.status == DraftStatus.PENDING,
+                    Draft.expires_at > now,
+                    Draft.payload[EDIT_TIME_REMINDER_ID].as_integer() == Reminder.id,
+                )
+                .exists(),
             )
             .order_by(Reminder.due_at, Reminder.id)
             .limit(limit)
@@ -75,6 +85,18 @@ class ReminderRepository:
     async def get_by_id_for_user(self, *, reminder_id: int, user_id: int) -> Reminder | None:
         return await self._session.scalar(
             select(Reminder).where(Reminder.id == reminder_id, Reminder.user_id == user_id)
+        )
+
+    async def get_by_id_for_user_for_update(
+        self,
+        *,
+        reminder_id: int,
+        user_id: int,
+    ) -> Reminder | None:
+        return await self._session.scalar(
+            select(Reminder)
+            .where(Reminder.id == reminder_id, Reminder.user_id == user_id)
+            .with_for_update()
         )
 
     async def get_by_id(self, reminder_id: int) -> Reminder | None:

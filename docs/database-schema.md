@@ -317,6 +317,15 @@ Use a partial btree index for draft expiration cleanup:
 
 Purpose: a cleanup job can mark old pending drafts as expired without scanning the whole table.
 
+Use a partial unique btree index for active `Choose time` edit sessions:
+
+    CREATE UNIQUE INDEX drafts_user_pending_edit_time_uidx
+    ON drafts (user_id)
+    WHERE status = 'pending'
+      AND type = 'reminder_edit_time';
+
+Purpose: a user should not have multiple pending edit-time sessions competing for the next text message. Repeated `Choose time` taps should reuse the existing pending draft instead of creating duplicate durable edit state.
+
 ### Callback Events
 
 Use a unique btree index on `callback_events.callback_key`:

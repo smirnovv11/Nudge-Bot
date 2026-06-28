@@ -33,9 +33,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-26 00:00Z) Implemented the first DB-backed worker delivery loop: due reminders are claimed, sent through Telegram with fired-reminder buttons, delivery attempts are recorded, success marks reminders `sent`, and send failures return reminders to `active` for a later tick.
 - [x] (2026-06-26 00:00Z) Added fired-reminder callback handling for `Read`, `Repeat`, and MVP-placeholder `Choose time`; `Read` completes reminders, `Repeat` snoozes by the user's repeat interval, and stable callback keys prevent one notification button event from applying twice.
 - [x] (2026-06-28 19:30Z) Implemented auto-repeat for delivered reminders that remain `sent` with no user action: successful delivery now schedules the next unattended fire time from the user's repeat interval, and due scans include `sent` reminders.
-- [ ] Implement the `Choose time` edit flow.
-- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, confirm/cancel idempotency, worker tick, delivery success/failure, and fired-reminder callback idempotency tests exist; PostgreSQL-backed integration coverage still needs to be added.
-- [x] (2026-06-28 19:30Z) Ran local validation with bundled Python and repository-local uv cache: pytest passed with 53 tests, Ruff lint passed, and Ruff format check passed.
+- [x] (2026-06-28 20:15Z) Implemented the `Choose time` edit flow: the fired-reminder button creates or reuses a durable `reminder_edit_time` draft, the next text message is parsed for a replacement due time, and successful edits reschedule the existing reminder without changing its text.
+- [x] (2026-06-28 20:45Z) Applied review fixes for the `Choose time` edit flow: due claiming suppresses reminders with a non-expired pending edit-time draft, edit-time application locks the reminder row before state checks, repeated `Choose time` taps no longer send duplicate prompt messages, and a partial unique index prevents duplicate pending edit-time drafts per user.
+- [x] (2026-06-28 21:05Z) Applied follow-up review hardening: `Choose time` creation now serializes by locking the user row before checking pending drafts, edit-time draft payload keys are centralized in a typed helper, the unique-index migration cancels older duplicate pending edit-time drafts before creating the index, and `README.md` no longer describes `Choose time` as a placeholder.
+- [x] (2026-06-28 21:20Z) Completed a lightweight `Choose time` test-stabilization pass by adding unit coverage for replacing a pending edit-time draft that points at a different reminder, without expanding into PostgreSQL race or multi-worker integration coverage.
+- [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, confirm/cancel idempotency, worker tick, delivery success/failure, fired-reminder callback idempotency, auto-repeat, and `Choose time` edit-flow tests exist; PostgreSQL-backed integration coverage is deliberately deferred until after the next product slice is planned.
+- [x] (2026-06-28 21:20Z) Ran local validation with bundled Python and repository-local uv cache: pytest passed with 71 tests, Ruff lint passed, and Ruff format check passed.
+- [ ] Plan voice input as the next product milestone: add voice as a new input strategy that transcribes Telegram voice/audio, stores transcript metadata, and reuses the existing parser, confirmation draft flow, reminder service, UTC persistence, and worker path.
 
 ## Surprises & Discoveries
 
@@ -62,6 +66,18 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: Auto-repeat can reuse the existing `reminders.due_at` field instead of adding an auto-repeat timestamp.
   Evidence: The worker already orders deliverable reminders by `due_at`, and `ReminderDeliveryService.mark_sent` now moves `due_at` to `sent_at + user_settings.repeat_interval_minutes` while keeping the reminder in `sent`.
+
+- Observation: `Choose time` can reuse the existing parser without changing the parser contract.
+  Evidence: `ReminderEditTimeService.apply_edit_time_text` calls `parse_reminder_text` and uses only `parsed.due_at`; the reminder text remains unchanged, so inputs like "через 20 минут" can reschedule an existing reminder even when there is no new reminder text.
+
+- Observation: Starting `Choose time` should not consume or replace the original fired-reminder controls.
+  Evidence: The callback now sends a separate prompt message with a `Cancel` button, while the original fired reminder message keeps its `Read`, `Repeat`, and `Choose time` buttons for the normal reminder flow.
+
+- Observation: A pending edit-time draft must be visible to the scheduler.
+  Evidence: The due-reminder repository now excludes reminders that have a non-expired pending `reminder_edit_time` draft for the same reminder id, so auto-repeat does not fire while the bot is waiting for a custom time.
+
+- Observation: A user can only have one pending edit-time session, so choosing time for a different reminder should retire the older pending draft before creating the new one.
+  Evidence: `ReminderEditTimeService._handle_existing_pending_draft` cancels the old draft when its payload points at another reminder, and `tests/reminders/services/test_edit_time_service.py::test_choose_time_replaces_pending_draft_for_other_reminder` now locks in that lifecycle behavior.
 
 ## Decision Log
 
@@ -121,9 +137,41 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: A delivered one-off reminder that remains `sent` still needs one next scheduler timestamp. Reusing `due_at` keeps the MVP schema small, avoids introducing recurring-reminder concepts, and lets `Read` stop repeats by moving the reminder to `completed`.
   Date/Author: 2026-06-28 / Codex
 
+- Decision: `Choose time` stores edit state in `drafts` with `type = reminder_edit_time` and a small JSON payload containing the reminder id, notification id, callback key, and display timezone.
+  Rationale: The schema already includes durable drafts and the required draft enum value, so no migration is needed. Keeping the edit state in PostgreSQL makes the flow survive process restarts and keeps Telegram handlers thin.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: A successful `Choose time` edit moves the reminder to `snoozed`.
+  Rationale: The user is explicitly postponing an already delivered reminder to a chosen future time. Using `snoozed` removes the old `sent` auto-repeat timestamp from the active loop while preserving the same one-off reminder record.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: The `Choose time` prompt is a normal chat message with a single `Cancel` button, not a Telegram popup alert.
+  Rationale: A visible message can show an example input and gives the user a clear cancellation affordance. Cancelling closes the durable edit draft and deletes only the prompt message, leaving the fired reminder message and its action buttons intact.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: Suppress due claiming with a pending edit-time draft rather than adding a new reminder status.
+  Rationale: The MVP enum already has a small lifecycle and no migration is needed for a new state. A scheduler-side exclusion keyed by the durable draft expresses that the reminder is temporarily waiting for user input, while cancellation, confirmation, or draft expiry naturally returns the reminder to normal scheduler behavior.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: Add a partial unique index for pending edit-time drafts per user.
+  Rationale: Query-level reuse is not enough under concurrent callback delivery. The index makes the durable invariant explicit: one user can have only one pending edit-time session consuming the next text message.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: Serialize edit-time draft creation by locking the user row.
+  Rationale: The partial unique index protects the database invariant, but locking the user before checking or creating pending edit-time drafts prevents concurrent `Choose time` callbacks for different reminders from surfacing as a generic uniqueness failure.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: Centralize edit-time draft payload keys in `nudge_bot.reminders.draft_payloads`.
+  Rationale: Scheduler suppression depends on the reminder id stored in draft JSON. A helper keeps the service writer and scheduler reader aligned while preserving the MVP schema.
+  Date/Author: 2026-06-28 / Codex
+
+- Decision: Treat voice input as the next milestone after `Choose time` stabilization, implemented as an input strategy rather than a forked reminder lifecycle.
+  Rationale: The text parser, confidence layer, draft confirmation flow, reminder service, UTC storage rules, and worker path are already the durable creation pipeline. Voice should add transcription and metadata at the input boundary, then hand the transcript to the same pipeline.
+  Date/Author: 2026-06-28 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, and unattended auto-repeat. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. The full `Choose time` edit flow still needs to be implemented.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, and a text-based `Choose time` edit flow. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. A lightweight stabilization pass for the new `Choose time` lifecycle is green, and the next planned product work is voice input design.
 
 ## Context and Orientation
 
@@ -160,6 +208,16 @@ Milestone 5 implements bot interaction. Add aiogram routers for `/start`, free t
 Milestone 6 implements the worker. The worker should periodically claim due reminders from PostgreSQL, send Telegram notifications, record delivery attempts, and schedule the next repeat if the user does not act. Use UTC timestamps in the database and user timezone only at input/output boundaries.
 
 Milestone 7 hardens behavior. Add idempotency around callback handlers, basic per-user button throttling, Telegram API retry handling, structured logging without full reminder text by default, and tests for the state machine.
+
+Milestone 8 adds voice input as a new reminder intake strategy. The bot should accept Telegram voice/audio messages, download the file through the Telegram adapter, transcribe it through a small transcription boundary, and pass the transcript into the same parser and reminder intake flow as text messages. Store the final reminder as `source_type = voice` and keep transcript/source metadata in `reminders.metadata` or `drafts.payload` without storing unnecessary raw audio.
+
+Voice input design checkpoints before implementation:
+
+1. Choose the transcription dependency and configuration surface, including local-development behavior when credentials are missing.
+2. Define a `VoiceReminderInputStrategy` or equivalent service boundary that returns transcript text plus metadata, then delegates to the existing text parser/intake path.
+3. Keep aiogram voice/audio handlers thin: fetch Telegram file metadata, call the voice service, and render the same created/draft/unknown responses already used for text.
+4. Add narrow unit tests for transcript handoff, metadata persistence shape, unsupported/failed transcription responses, and reuse of the existing confirmation flow.
+5. Do not add Redis, APScheduler, FastAPI, webhooks, recurring reminders, or a separate voice-only reminder lifecycle for this milestone.
 
 ## Concrete Steps
 
@@ -257,9 +315,10 @@ The user-visible acceptance cases are:
 3. When a reminder is due, the bot sends inline buttons for `Read`, `Repeat`, and `Choose time`.
 4. Pressing `Read` marks the reminder completed and stops future repeats.
 5. Pressing `Repeat` schedules the reminder again after the configured interval.
-6. Pressing `Read` twice remains safe and does not duplicate state.
-7. If the user does not press any button after a delivered notification, the worker sends the same reminder again after the user's configured repeat interval.
-8. If the worker restarts, reminders stored in PostgreSQL are still found and delivered.
+6. Pressing `Choose time`, then sending "через 20 минут" or "tomorrow at 9", reschedules the same reminder to the parsed time without changing the reminder text.
+7. Pressing `Read` twice remains safe and does not duplicate state.
+8. If the user does not press any button after a delivered notification, the worker sends the same reminder again after the user's configured repeat interval.
+9. If the worker restarts, reminders stored in PostgreSQL are still found and delivered.
 
 The technical acceptance cases are:
 
@@ -268,7 +327,8 @@ The technical acceptance cases are:
 3. Tests cover idempotent callback handling.
 4. Tests cover worker claiming so the same due reminder is not sent twice by one scan.
 5. Tests cover auto-repeat scheduling from successful delivery and due claiming of `sent` reminders.
-6. Ruff lint and format checks pass.
+6. Tests cover `Choose time` draft creation, repeated-button idempotency, parsing a replacement time, low-confidence/unknown input, and expired edit drafts.
+7. Ruff lint and format checks pass.
 
 ## Idempotence and Recovery
 
@@ -369,3 +429,11 @@ Revision note: Architecture boundaries revised on 2026-06-24. Enum vocabulary mo
 Revision note: Index metadata aligned on 2026-06-24. The baseline migration remains the source for creating the documented indexes, and SQLAlchemy models now declare the same non-column indexes for readability and future Alembic autogeneration.
 
 Revision note: Auto-repeat implemented on 2026-06-28. Delivered reminders now keep status `sent` while `due_at` is moved to the next unattended repeat time, the due-reminder index includes `sent`, and `ReminderToSend` carries `repeat_interval_minutes` from `user_settings`.
+
+Revision note: Choose-time edit flow implemented on 2026-06-28. Pressing `Choose time` now creates or reuses a durable `reminder_edit_time` draft, sends a normal prompt message with a `Cancel` button, parses the next text message with the existing reminder parser, and moves the same reminder to `snoozed` at the chosen UTC due time after a successful edit.
+
+Revision note: Choose-time review fixes applied on 2026-06-28. Pending edit-time drafts now suppress due claiming until cancellation, confirmation, or expiry; reminder rows are locked before edit application; duplicate pending edit-time drafts are prevented by a partial unique index; repeated `Choose time` taps no longer send duplicate prompt messages.
+
+Revision note: Choose-time follow-up hardening applied on 2026-06-28. The edit-time payload contract is centralized, pending draft creation serializes on the user row, the duplicate-draft migration cleans up older pending duplicates before creating the unique index, and README reflects the implemented text-based `Choose time` flow.
+
+Revision note: Choose-time test stabilization completed on 2026-06-28. A focused unit test now covers replacing a pending edit-time draft for another reminder, full validation is green with 71 tests, and the plan now points to voice input as the next input-strategy milestone.

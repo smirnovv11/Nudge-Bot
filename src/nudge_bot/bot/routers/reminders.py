@@ -5,21 +5,24 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallback
-from nudge_bot.bot.keyboards import draft_confirmation_keyboard
+from nudge_bot.bot.keyboards import draft_confirmation_keyboard, edit_time_cancel_keyboard
 from nudge_bot.config import Settings
 from nudge_bot.reminders.domain import ReminderResult
-from nudge_bot.reminders.enums import CallbackAction
+from nudge_bot.reminders.enums import CallbackAction, DraftType
 from nudge_bot.reminders.services import (
     DraftFlowService,
     ReminderActionService,
+    ReminderEditTimeService,
     TextReminderService,
 )
 from nudge_bot.reminders.services.schemas import (
     DraftActionResult,
+    EditTimeResult,
     TextReminderResult,
 )
 from nudge_bot.storage.unit_of_work import unit_of_work
@@ -28,6 +31,7 @@ router = Router(name="reminders")
 logger = logging.getLogger(__name__)
 draft_flow_service = DraftFlowService()
 reminder_action_service = ReminderActionService()
+reminder_edit_time_service = ReminderEditTimeService()
 text_reminder_service = TextReminderService()
 
 
@@ -41,7 +45,7 @@ async def handle_text_message(
         return
 
     async with unit_of_work(session_factory) as uow:
-        result = await text_reminder_service.handle_text_reminder(
+        edit_time_result = await reminder_edit_time_service.apply_edit_time_text(
             uow,
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
@@ -50,6 +54,22 @@ async def handle_text_message(
             now=datetime.now(UTC),
             settings=settings,
         )
+        if edit_time_result.outcome == "no_pending_draft":
+            result = await text_reminder_service.handle_text_reminder(
+                uow,
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                locale=message.from_user.language_code,
+                text=message.text,
+                now=datetime.now(UTC),
+                settings=settings,
+            )
+        else:
+            result = None
+
+    if edit_time_result.outcome != "no_pending_draft":
+        await message.answer(format_edit_time_result(edit_time_result))
+        return
 
     if result.outcome == "draft" and result.draft is not None:
         await message.answer(
@@ -101,6 +121,13 @@ async def handle_draft_callback(
 
     await callback.answer()
     if result is not None and isinstance(callback.message, Message):
+        if callback_data.action == "cancel" and result.draft.type == DraftType.REMINDER_EDIT_TIME:
+            try:
+                await callback.message.delete()
+            except TelegramBadRequest:
+                logger.debug("edit-time prompt message was already unavailable")
+            return
+
         await callback.message.edit_text(format_draft_action_result(result))
 
 
@@ -110,13 +137,11 @@ async def handle_draft_callback(
 async def handle_reminder_action_callback(
     callback: CallbackQuery,
     callback_data: ReminderActionCallback,
+    settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    if callback_data.action == "choose_time":
-        await callback.answer("🕒 Choosing a custom time is coming soon", show_alert=True)
-        return
-
     result: ReminderResult | None = None
+    edit_time_result: EditTimeResult | None = None
     unavailable_message: str | None = None
     display_timezone: str | None = None
     callback_key = reminder_action_callback_key(callback_data, callback.id)
@@ -126,6 +151,21 @@ async def handle_reminder_action_callback(
             user = await uow.users.get_by_telegram_id(callback.from_user.id)
             if user is None:
                 unavailable_message = "🙈 I could not find this reminder"
+            elif callback_data.action == "choose_time":
+                display_timezone = (
+                    user.settings.timezone
+                    if user.settings is not None
+                    else settings.default_timezone
+                )
+                edit_time_result = await reminder_edit_time_service.start_choose_time(
+                    uow,
+                    callback_key=callback_key,
+                    reminder_id=callback_data.reminder_id,
+                    user_id=user.id,
+                    notification_id=callback_data.notification_id,
+                    timezone=display_timezone,
+                    now=datetime.now(UTC),
+                )
             else:
                 display_timezone = user.settings.timezone
                 result = await reminder_action_service.process_callback_action(
@@ -152,6 +192,22 @@ async def handle_reminder_action_callback(
 
     if unavailable_message is not None:
         await callback.answer(unavailable_message, show_alert=True)
+        return
+
+    if edit_time_result is not None:
+        if should_send_edit_time_prompt(edit_time_result) and isinstance(callback.message, Message):
+            await callback.answer()
+            await callback.message.answer(
+                format_edit_time_result(edit_time_result),
+                reply_markup=edit_time_cancel_keyboard(edit_time_result.draft.id),
+            )
+            return
+
+        if edit_time_result.outcome == "awaiting_input":
+            await callback.answer("Already waiting for a new time", show_alert=True)
+            return
+
+        await callback.answer(format_edit_time_result(edit_time_result), show_alert=True)
         return
 
     await callback.answer()
@@ -208,6 +264,35 @@ def format_reminder_action_result(
         return f"🔁 Reminder repeated\n🕒 {_format_datetime(result.due_at, display_timezone)}"
 
     return "👌 Reminder already handled"
+
+
+def format_edit_time_result(result: EditTimeResult) -> str:
+    if result.outcome == "awaiting_input":
+        return "Отправьте новое время\nНапример: завтра в 9 / через 20 минут"
+
+    if result.outcome == "rescheduled" and result.reminder is not None:
+        return (
+            "✅ Reminder rescheduled\n"
+            f"🕒 {_format_datetime(result.reminder.due_at, result.display_timezone)}"
+        )
+
+    if result.outcome == "unknown":
+        return "Не получилось понять новое время\nПопробуйте: завтра в 9 / через 20 минут"
+
+    if result.outcome == "expired":
+        return "This time edit expired\nPress Choose time again"
+
+    if result.outcome == "already_handled":
+        return "This reminder is already handled"
+
+    if result.outcome == "cancelled":
+        return "This time edit is no longer available"
+
+    return "No reminder is waiting for a new time"
+
+
+def should_send_edit_time_prompt(result: EditTimeResult) -> bool:
+    return result.outcome == "awaiting_input" and result.changed and result.draft is not None
 
 
 def reminder_action_callback_key(

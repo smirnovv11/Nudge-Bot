@@ -45,6 +45,8 @@ async def test_claim_due_includes_sent_reminders_and_user_repeat_interval() -> N
     assert result[0].repeat_interval_minutes == 7
     assert session.scalars_statement is not None
     assert "user_settings" not in str(session.scalars_statement).lower()
+    assert "drafts" in str(session.scalars_statement).lower()
+    assert "exists" in str(session.scalars_statement).lower()
     status_values = session.scalars_statement.compile().params["status_1"]  # type: ignore[attr-defined]
     assert status_values == [
         ReminderStatus.ACTIVE,
