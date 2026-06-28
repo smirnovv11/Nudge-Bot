@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.enums import CallbackEventStatus, ReminderDeliveryStatus, ReminderStatus
 from nudge_bot.storage.models import Draft
 
@@ -44,7 +45,7 @@ class FakeCallbackEvent:
 @dataclass
 class FakeUserSettings:
     timezone: str = "Europe/Minsk"
-    repeat_interval_minutes: int = 5
+    repeat_interval_minutes: int = DEFAULT_REPEAT_INTERVAL_MINUTES
 
 
 @dataclass
@@ -86,15 +87,34 @@ class FakeReminderRepository:
     def add(self, reminder: object) -> None:
         self.added.append(reminder)
 
-    async def mark_delivery_sent(self, *, reminder_id: int, now: datetime) -> None:
-        self.mark_delivery_sent_called_with = {"reminder_id": reminder_id, "now": now}
-        if self.reminder is not None and self.reminder.id == reminder_id:
+    async def mark_delivery_sent(
+        self,
+        *,
+        reminder_id: int,
+        now: datetime,
+        repeat_interval_minutes: int,
+    ) -> None:
+        self.mark_delivery_sent_called_with = {
+            "reminder_id": reminder_id,
+            "now": now,
+            "repeat_interval_minutes": repeat_interval_minutes,
+        }
+        if (
+            self.reminder is not None
+            and self.reminder.id == reminder_id
+            and self.reminder.status == ReminderStatus.SENDING
+        ):
             self.reminder.status = ReminderStatus.SENT
+            self.reminder.due_at = now + timedelta(minutes=repeat_interval_minutes)
             self.reminder.locked_at = None
 
     async def mark_delivery_failed(self, *, reminder_id: int) -> None:
         self.mark_delivery_failed_called_with = {"reminder_id": reminder_id}
-        if self.reminder is not None and self.reminder.id == reminder_id:
+        if (
+            self.reminder is not None
+            and self.reminder.id == reminder_id
+            and self.reminder.status == ReminderStatus.SENDING
+        ):
             self.reminder.status = ReminderStatus.ACTIVE
             self.reminder.locked_at = None
 

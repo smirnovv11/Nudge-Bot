@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from nudge_bot.common.constants import (
+from nudge_bot.config import Settings
+from nudge_bot.constants import (
     DEFAULT_REPEAT_INTERVAL_MINUTES,
     DEFAULT_TIMEZONE,
     SCHEDULER_POLL_INTERVAL_SECONDS,
 )
-from nudge_bot.config import Settings
 
 
 def test_settings_defaults_match_mvp() -> None:

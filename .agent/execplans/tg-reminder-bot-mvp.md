@@ -32,10 +32,10 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-26 00:00Z) Refactored reminder application services into class-based service modules, moved service result schemas into a dedicated module, kept a compatibility facade for existing imports, and reorganized tests by bot, config, storage, parser, and service layer.
 - [x] (2026-06-26 00:00Z) Implemented the first DB-backed worker delivery loop: due reminders are claimed, sent through Telegram with fired-reminder buttons, delivery attempts are recorded, success marks reminders `sent`, and send failures return reminders to `active` for a later tick.
 - [x] (2026-06-26 00:00Z) Added fired-reminder callback handling for `Read`, `Repeat`, and MVP-placeholder `Choose time`; `Read` completes reminders, `Repeat` snoozes by the user's repeat interval, and stable callback keys prevent one notification button event from applying twice.
-- [ ] Implement auto-repeat for delivered reminders that remain `sent` with no user action.
+- [x] (2026-06-28 19:30Z) Implemented auto-repeat for delivered reminders that remain `sent` with no user action: successful delivery now schedules the next unattended fire time from the user's repeat interval, and due scans include `sent` reminders.
 - [ ] Implement the `Choose time` edit flow.
 - [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, confirm/cancel idempotency, worker tick, delivery success/failure, and fired-reminder callback idempotency tests exist; PostgreSQL-backed integration coverage still needs to be added.
-- [ ] Run local validation and document the observed behavior.
+- [x] (2026-06-28 19:30Z) Ran local validation with bundled Python and repository-local uv cache: pytest passed with 53 tests, Ruff lint passed, and Ruff format check passed.
 
 ## Surprises & Discoveries
 
@@ -59,6 +59,9 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: Sequential idempotency tests are not enough for Telegram callback safety.
   Evidence: Review found that a plain draft `SELECT` allowed two concurrent confirm callbacks to see `pending` and create duplicate reminders; `DraftRepository.get_by_id_for_user_for_update` now locks the row inside the Unit of Work before confirm/cancel status decisions.
+
+- Observation: Auto-repeat can reuse the existing `reminders.due_at` field instead of adding an auto-repeat timestamp.
+  Evidence: The worker already orders deliverable reminders by `due_at`, and `ReminderDeliveryService.mark_sent` now moves `due_at` to `sent_at + user_settings.repeat_interval_minutes` while keeping the reminder in `sent`.
 
 ## Decision Log
 
@@ -114,9 +117,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: Delivery and button idempotency are the smallest end-to-end slice needed to manually test reminders in Telegram. The edit-time state machine and unattended repeat policy can be added after the delivery path is observable and tested.
   Date/Author: 2026-06-26 / Codex
 
+- Decision: Auto-repeat reuses `reminders.due_at` as the next fire time for delivered reminders.
+  Rationale: A delivered one-off reminder that remains `sent` still needs one next scheduler timestamp. Reusing `due_at` keeps the MVP schema small, avoids introducing recurring-reminder concepts, and lets `Read` stop repeats by moving the reminder to `completed`.
+  Date/Author: 2026-06-28 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, an Alembic migration for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, and fired-reminder callbacks. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, and snooze them with `Repeat`. Auto-repeat with no user action and the full `Choose time` edit flow still need to be implemented.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, and unattended auto-repeat. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. The full `Choose time` edit flow still needs to be implemented.
 
 ## Context and Orientation
 
@@ -251,7 +258,8 @@ The user-visible acceptance cases are:
 4. Pressing `Read` marks the reminder completed and stops future repeats.
 5. Pressing `Repeat` schedules the reminder again after the configured interval.
 6. Pressing `Read` twice remains safe and does not duplicate state.
-7. If the worker restarts, reminders stored in PostgreSQL are still found and delivered.
+7. If the user does not press any button after a delivered notification, the worker sends the same reminder again after the user's configured repeat interval.
+8. If the worker restarts, reminders stored in PostgreSQL are still found and delivered.
 
 The technical acceptance cases are:
 
@@ -259,7 +267,8 @@ The technical acceptance cases are:
 2. Tests cover reminder status transitions.
 3. Tests cover idempotent callback handling.
 4. Tests cover worker claiming so the same due reminder is not sent twice by one scan.
-5. Ruff lint and format checks pass.
+5. Tests cover auto-repeat scheduling from successful delivery and due claiming of `sent` reminders.
+6. Ruff lint and format checks pass.
 
 ## Idempotence and Recovery
 
@@ -333,6 +342,8 @@ Define a worker service in `src/nudge_bot/reminders/service.py`:
     async def snooze(uow: UnitOfWork, *, reminder_id: int, user_id: int, interval_minutes: int) -> ReminderResult:
         ...
 
+`ReminderToSend` in `src/nudge_bot/reminders/domain.py` must include `repeat_interval_minutes`. The worker gets that value from `user_settings` during due claiming and passes it to `ReminderDeliveryService.mark_sent`, which moves `reminders.due_at` to the next auto-repeat time after Telegram accepts a notification.
+
 Best practices that must hold during implementation:
 
 - Keep aiogram handlers thin and route real behavior to services.
@@ -356,3 +367,5 @@ Revision note: Local development workflow revised on 2026-06-24. Docker Compose 
 Revision note: Architecture boundaries revised on 2026-06-24. Enum vocabulary moved out of ORM models, ORM enum columns now explicitly match PostgreSQL enum names and values, storage access is grouped behind repositories, services use a Unit of Work, and text reminder intake now has a strategy boundary for future voice support.
 
 Revision note: Index metadata aligned on 2026-06-24. The baseline migration remains the source for creating the documented indexes, and SQLAlchemy models now declare the same non-column indexes for readability and future Alembic autogeneration.
+
+Revision note: Auto-repeat implemented on 2026-06-28. Delivered reminders now keep status `sent` while `due_at` is moved to the next unattended repeat time, the due-reminder index includes `sent`, and `ReminderToSend` carries `repeat_interval_minutes` from `user_settings`.
