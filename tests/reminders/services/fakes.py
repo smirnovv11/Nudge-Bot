@@ -4,7 +4,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
-from nudge_bot.reminders.enums import CallbackEventStatus, ReminderDeliveryStatus, ReminderStatus
+from nudge_bot.reminders.enums import (
+    CallbackEventStatus,
+    DraftStatus,
+    DraftType,
+    ReminderDeliveryStatus,
+    ReminderStatus,
+)
 from nudge_bot.storage.models import Draft
 
 
@@ -72,6 +78,7 @@ class FakeReminderRepository:
         self.claim_due_called_with: tuple[int, datetime] | None = None
         self.mark_delivery_sent_called_with: dict[str, object] | None = None
         self.mark_delivery_failed_called_with: dict[str, object] | None = None
+        self.locked_lookup_called = False
 
     async def claim_due(self, *, limit: int, now: datetime) -> list[object]:
         self.claim_due_called_with = (limit, now)
@@ -83,6 +90,15 @@ class FakeReminderRepository:
         if self.reminder.id == reminder_id and self.reminder.user_id == user_id:
             return self.reminder
         return None
+
+    async def get_by_id_for_user_for_update(
+        self,
+        *,
+        reminder_id: int,
+        user_id: int,
+    ) -> FakeReminder | None:
+        self.locked_lookup_called = True
+        return await self.get_by_id_for_user(reminder_id=reminder_id, user_id=user_id)
 
     def add(self, reminder: object) -> None:
         self.added.append(reminder)
@@ -168,22 +184,48 @@ class FakeDraftRepository:
     def __init__(self, draft: Draft | None = None) -> None:
         self.draft = draft
         self.added: list[Draft] = []
+        self.drafts: list[Draft] = [draft] if draft is not None else []
         self.locked_lookup_called = False
 
     async def get_by_id_for_user(self, *, draft_id: int, user_id: int) -> Draft | None:
-        if self.draft is None:
-            return None
-        if self.draft.id == draft_id and self.draft.user_id == user_id:
-            return self.draft
+        for draft in self.drafts:
+            if draft.id == draft_id and draft.user_id == user_id:
+                return draft
         return None
+
+    async def get_pending_by_type_for_user(
+        self,
+        *,
+        user_id: int,
+        draft_type: DraftType,
+    ) -> Draft | None:
+        for draft in self.drafts:
+            if (
+                draft.user_id == user_id
+                and draft.type == draft_type
+                and draft.status == DraftStatus.PENDING
+            ):
+                return draft
+        return None
+
+    async def get_pending_by_type_for_user_for_update(
+        self,
+        *,
+        user_id: int,
+        draft_type: DraftType,
+    ) -> Draft | None:
+        self.locked_lookup_called = True
+        return await self.get_pending_by_type_for_user(user_id=user_id, draft_type=draft_type)
 
     async def get_by_id_for_user_for_update(self, *, draft_id: int, user_id: int) -> Draft | None:
         self.locked_lookup_called = True
         return await self.get_by_id_for_user(draft_id=draft_id, user_id=user_id)
 
     def add(self, draft: Draft) -> None:
-        draft.id = len(self.added) + 1
+        draft.id = len(self.drafts) + 1
         self.added.append(draft)
+        self.drafts.append(draft)
+        self.draft = draft
 
 
 class FakeUserRepository:
@@ -196,6 +238,7 @@ class FakeUserRepository:
             settings=FakeUserSettings(),
         )
         self.get_or_create_called_with: dict[str, object] | None = None
+        self.locked_lookup_called = False
 
     async def get_or_create(
         self,
@@ -220,6 +263,12 @@ class FakeUserRepository:
 
     async def get_by_telegram_id(self, telegram_user_id: int) -> FakeUser | None:
         if self.user.telegram_user_id == telegram_user_id:
+            return self.user
+        return None
+
+    async def get_by_id_for_update(self, user_id: int) -> FakeUser | None:
+        self.locked_lookup_called = True
+        if self.user.id == user_id:
             return self.user
         return None
 

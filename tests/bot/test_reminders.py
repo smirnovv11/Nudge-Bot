@@ -3,17 +3,27 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallback
-from nudge_bot.bot.keyboards import draft_confirmation_keyboard, reminder_actions_keyboard
+from nudge_bot.bot.keyboards import (
+    draft_confirmation_keyboard,
+    edit_time_cancel_keyboard,
+    reminder_actions_keyboard,
+)
 from nudge_bot.bot.routers.reminders import (
     format_draft_action_result,
+    format_edit_time_result,
     format_reminder_action_result,
     format_text_reminder_result,
     reminder_action_callback_key,
+    should_send_edit_time_prompt,
 )
 from nudge_bot.reminders.domain import ReminderResult
 from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
 from nudge_bot.reminders.parser import ParsedReminderDraft
-from nudge_bot.reminders.services.schemas import DraftActionResult, TextReminderResult
+from nudge_bot.reminders.services.schemas import (
+    DraftActionResult,
+    EditTimeResult,
+    TextReminderResult,
+)
 from nudge_bot.storage.models import Draft, Reminder
 
 
@@ -28,6 +38,16 @@ def test_draft_confirmation_keyboard_packs_confirm_and_cancel_callbacks() -> Non
         ReminderDraftCallback(action="confirm", draft_id=42),
         ReminderDraftCallback(action="cancel", draft_id=42),
     ]
+
+
+def test_edit_time_cancel_keyboard_packs_cancel_callback() -> None:
+    keyboard = edit_time_cancel_keyboard(draft_id=42)
+
+    button = keyboard.inline_keyboard[0][0]
+    callback = ReminderDraftCallback.unpack(button.callback_data)
+
+    assert button.text == "Cancel"
+    assert callback == ReminderDraftCallback(action="cancel", draft_id=42)
 
 
 def test_reminder_actions_keyboard_packs_fired_reminder_callbacks() -> None:
@@ -210,6 +230,66 @@ def test_reminder_action_result_format_uses_display_timezone() -> None:
     )
 
     assert message == "🔁 Reminder repeated\n🕒 2026-06-26 00:05"
+
+
+def test_edit_time_awaiting_input_format_is_user_facing() -> None:
+    message = format_edit_time_result(
+        EditTimeResult(
+            outcome="awaiting_input",
+            changed=True,
+            display_timezone="Europe/Minsk",
+        )
+    )
+
+    assert "Отправьте новое время" in message
+    assert "через 20 минут" in message
+    assert "payload" not in message
+    assert "parse_confidence" not in message
+
+
+def test_edit_time_prompt_is_sent_only_for_new_pending_draft() -> None:
+    draft = Draft(
+        id=42,
+        user_id=10,
+        type=DraftType.REMINDER_EDIT_TIME,
+        status=DraftStatus.PENDING,
+        input_text="",
+        payload={"reminder_id": 1},
+        expires_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
+    )
+
+    assert (
+        should_send_edit_time_prompt(
+            EditTimeResult(outcome="awaiting_input", changed=True, draft=draft)
+        )
+        is True
+    )
+    assert (
+        should_send_edit_time_prompt(
+            EditTimeResult(outcome="awaiting_input", changed=False, draft=draft)
+        )
+        is False
+    )
+
+
+def test_edit_time_rescheduled_format_uses_display_timezone() -> None:
+    reminder = Reminder(
+        user_id=10,
+        status=ReminderStatus.SNOOZED,
+        reminder_text="pick up order",
+        due_at=datetime(2026, 6, 25, 21, 5, tzinfo=UTC),
+    )
+
+    message = format_edit_time_result(
+        EditTimeResult(
+            outcome="rescheduled",
+            changed=True,
+            display_timezone="Europe/Minsk",
+            reminder=reminder,
+        )
+    )
+
+    assert message == "✅ Reminder rescheduled\n🕒 2026-06-26 00:05"
 
 
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:

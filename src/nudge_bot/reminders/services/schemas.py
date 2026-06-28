@@ -14,6 +14,15 @@ DraftActionOutcome = Literal[
     "already_cancelled",
     "expired",
 ]
+EditTimeOutcome = Literal[
+    "awaiting_input",
+    "rescheduled",
+    "unknown",
+    "expired",
+    "already_handled",
+    "cancelled",
+    "no_pending_draft",
+]
 
 
 @dataclass(frozen=True)
@@ -33,3 +42,13 @@ class DraftActionResult:
     changed: bool
     display_timezone: str | None = None
     reminder: Reminder | None = None
+
+
+@dataclass(frozen=True)
+class EditTimeResult:
+    outcome: EditTimeOutcome
+    changed: bool
+    display_timezone: str | None = None
+    reminder: Reminder | None = None
+    draft: Draft | None = None
+    parsed: ParsedReminderDraft | None = None

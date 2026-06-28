@@ -18,6 +18,9 @@ class UserRepository:
             .where(User.telegram_user_id == telegram_user_id)
         )
 
+    async def get_by_id_for_update(self, user_id: int) -> User | None:
+        return await self._session.scalar(select(User).where(User.id == user_id).with_for_update())
+
     async def get_or_create(
         self,
         *,

@@ -56,3 +56,16 @@ def draft_confirmation_keyboard(draft_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def edit_time_cancel_keyboard(draft_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Cancel",
+                    callback_data=ReminderDraftCallback(action="cancel", draft_id=draft_id).pack(),
+                ),
+            ]
+        ]
+    )

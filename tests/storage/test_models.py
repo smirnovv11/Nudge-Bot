@@ -53,6 +53,7 @@ def test_orm_models_define_documented_extra_indexes() -> None:
         Draft: {
             "drafts_user_pending_idx",
             "drafts_expiration_idx",
+            "drafts_user_pending_edit_time_uidx",
         },
         CallbackEvent: {
             "callback_events_reminder_created_idx",
@@ -73,6 +74,19 @@ def test_due_deliverable_index_includes_sent_for_auto_repeat() -> None:
     predicate = str(due_index.dialect_options["postgresql"]["where"])
 
     assert "status IN ('active', 'snoozed', 'sent')" in predicate
+
+
+def test_pending_edit_time_draft_index_is_unique() -> None:
+    index = next(
+        index
+        for index in Draft.__table__.indexes
+        if index.name == "drafts_user_pending_edit_time_uidx"
+    )
+    predicate = str(index.dialect_options["postgresql"]["where"])
+
+    assert index.unique is True
+    assert "status = 'pending'" in predicate
+    assert "type = 'reminder_edit_time'" in predicate
 
 
 def test_callback_events_has_timestamp_mixin_columns() -> None:
