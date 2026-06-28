@@ -41,4 +41,6 @@ Avoid logging full reminder text unless explicitly needed for local debugging. P
 
 Avoid magic numbers and duplicated default values. Shared product and runtime defaults, such as repeat intervals, scheduler polling intervals, draft expiration windows, and default timezone, belong in the dedicated constants package under `src/nudge_bot/constants/` and should be imported by application code and tests.
 
+Avoid magic string values for bounded domain or service states. If a value can be an enum, define and reuse an explicit enum-like type, preferably `StrEnum`, or another typed vocabulary such as a small dataclass-backed result contract when that better fits the code. Outcomes, statuses, actions, draft types, source types, and parser intents should not be checked through ad hoc strings such as `if result.outcome == "note"`.
+
 Separate logical blocks of code with a blank line for readability.
