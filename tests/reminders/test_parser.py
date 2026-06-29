@@ -210,6 +210,61 @@ def test_parse_russian_day_time_with_space_separator_confident() -> None:
     assert draft.needs_confirmation is False
 
 
+def test_parse_russian_day_time_without_preposition_confident() -> None:
+    cases = (
+        ("цветы завтра 14:00", "2026-06-25", 14, 0),
+        ("цветы завтра 14 00", "2026-06-25", 14, 0),
+        ("цветы послезавтра 14:00", "2026-06-26", 14, 0),
+        ("цветы сегодня 14 00", "2026-06-24", 14, 0),
+    )
+
+    for text, expected_date, expected_hour, expected_minute in cases:
+        draft = parse_reminder_text(text, now=NOW, timezone="Europe/Minsk")
+
+        assert draft.intent_kind == "reminder"
+        assert draft.reminder_text == "цветы"
+        assert draft.due_at is not None
+        assert draft.due_at.date().isoformat() == expected_date
+        assert draft.due_at.hour == expected_hour
+        assert draft.due_at.minute == expected_minute
+        assert draft.needs_confirmation is False
+
+
+def test_parse_numeric_day_month_with_time_confident() -> None:
+    cases = (
+        ("цветы 30-06 14:00", "2026-06-30", 14, 0),
+        ("цветы 30.06 14 00", "2026-06-30", 14, 0),
+        ("цветы 30.06 в 14:00", "2026-06-30", 14, 0),
+    )
+
+    for text, expected_date, expected_hour, expected_minute in cases:
+        draft = parse_reminder_text(text, now=NOW, timezone="Europe/Minsk")
+
+        assert draft.intent_kind == "reminder"
+        assert draft.reminder_text == "цветы"
+        assert draft.due_at is not None
+        assert draft.due_at.date().isoformat() == expected_date
+        assert draft.due_at.hour == expected_hour
+        assert draft.due_at.minute == expected_minute
+        assert draft.needs_confirmation is False
+
+
+def test_parse_numeric_day_month_without_time_needs_confirmation() -> None:
+    draft = parse_reminder_text(
+        "цветы 30.06",
+        now=NOW,
+        timezone="Europe/Minsk",
+    )
+
+    assert draft.intent_kind == "reminder"
+    assert draft.reminder_text == "цветы"
+    assert draft.due_at is not None
+    assert draft.due_at.date().isoformat() == "2026-06-30"
+    assert draft.due_at.hour == 0
+    assert draft.parse_confidence < 0.75
+    assert draft.needs_confirmation is True
+
+
 def test_plain_number_pair_without_time_marker_is_time() -> None:
     draft = parse_reminder_text(
         "ввв 22 30",

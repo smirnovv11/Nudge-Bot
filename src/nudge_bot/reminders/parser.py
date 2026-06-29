@@ -71,8 +71,14 @@ RUSSIAN_RELATIVE_PATTERNS = (
 RUSSIAN_DAY_PATTERN = re.compile(
     r"\b(?P<day>сегодня|завтра|послезавтра)\b"
     r"(?:\s+(?P<part>утром|днем|днём|вечером|ночью))?"
-    r"(?:\s+в\s+(?P<hour>\d{1,2})(?:(?::|\s+)(?P<minute>\d{2}))?"
+    r"(?:\s+(?:в\s+)?(?P<hour>\d{1,2})(?:(?::|\s+)(?P<minute>\d{2}))?"
     r"\s*(?P<modifier>утра|дня|вечера|ночи)?)?",
+    re.IGNORECASE,
+)
+
+RUSSIAN_NUMERIC_DATE_PATTERN = re.compile(
+    r"(?<!\d)(?P<day>\d{1,2})[.-](?P<month>\d{1,2})(?!\d)"
+    r"(?:\s+(?:в\s+)?(?P<hour>\d{1,2})(?:(?::|\s+)(?P<minute>\d{2}))?)?",
     re.IGNORECASE,
 )
 
@@ -286,6 +292,53 @@ def _match_russian_time_only(text: str, now: datetime) -> TemporalMatch | None:
     return None
 
 
+def _match_russian_numeric_date(text: str, now: datetime) -> TemporalMatch | None:
+    match = RUSSIAN_NUMERIC_DATE_PATTERN.search(text)
+    if match is None:
+        return None
+
+    day = int(match.group("day"))
+    month = int(match.group("month"))
+    hour_text = match.group("hour")
+    minute_text = match.group("minute")
+
+    if hour_text is not None:
+        clock = _safe_parse_clock(hour_text, minute_text, modifier=None)
+        if clock is None:
+            return None
+        hour, minute = clock
+        confidence = 0.85
+    else:
+        hour, minute = 0, 0
+        confidence = 0.6
+
+    try:
+        due_at = now.replace(
+            month=month,
+            day=day,
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0,
+        )
+    except ValueError:
+        return None
+
+    if due_at <= now:
+        try:
+            due_at = due_at.replace(year=due_at.year + 1)
+        except ValueError:
+            return None
+
+    return TemporalMatch(
+        matched_text=match.group(0),
+        start=match.start(),
+        end=match.end(),
+        due_at=due_at,
+        confidence=confidence,
+    )
+
+
 def _match_with_dateparser(text: str, now: datetime, timezone: str) -> TemporalMatch | None:
     matches = search_dates(
         text,
@@ -324,6 +377,7 @@ def _match_with_dateparser(text: str, now: datetime, timezone: str) -> TemporalM
 _TEMPORAL_RULES: tuple[TemporalRule, ...] = (
     _match_russian_relative_offset,
     _match_russian_day_phrase,
+    _match_russian_numeric_date,
     _match_russian_time_only,
 )
 
