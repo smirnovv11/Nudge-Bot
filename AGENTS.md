@@ -13,6 +13,7 @@ The selected MVP stack for this repository is:
 - Migrations: Alembic
 - Configuration: pydantic-settings with `.env`
 - Human date parsing: dateparser plus a project-owned confidence layer
+- Voice transcription: faster-whisper local transcription
 - Scheduling: custom DB-backed polling worker
 - Tests: pytest and pytest-asyncio
 - Quality tools: Ruff for linting and formatting

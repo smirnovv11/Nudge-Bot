@@ -13,6 +13,7 @@ from nudge_bot.bot.routers.reminders import (
     format_edit_time_result,
     format_reminder_action_result,
     format_text_reminder_result,
+    format_voice_reminder_result,
     reminder_action_callback_key,
     should_send_edit_time_prompt,
 )
@@ -23,6 +24,8 @@ from nudge_bot.reminders.services.schemas import (
     DraftActionResult,
     EditTimeResult,
     TextReminderResult,
+    VoiceReminderOutcome,
+    VoiceReminderResult,
 )
 from nudge_bot.storage.models import Draft, Reminder
 
@@ -290,6 +293,47 @@ def test_edit_time_rescheduled_format_uses_display_timezone() -> None:
     )
 
     assert message == "✅ Reminder rescheduled\n🕒 2026-06-26 00:05"
+
+
+def test_voice_result_format_reuses_text_result_format() -> None:
+    due_at = datetime(2026, 6, 24, 12, 20, tzinfo=UTC)
+    text_result = TextReminderResult(
+        outcome="created",
+        user_id=10,
+        parsed=ParsedReminderDraft(
+            input_text="walk the dog in 20 minutes",
+            reminder_text="walk the dog",
+            due_at=due_at,
+            parse_confidence=0.9,
+            intent_kind="reminder",
+            needs_confirmation=False,
+        ),
+        display_timezone="Europe/Minsk",
+        reminder=Reminder(
+            user_id=10,
+            status=ReminderStatus.ACTIVE,
+            reminder_text="walk the dog",
+            due_at=due_at,
+        ),
+    )
+
+    message = format_voice_reminder_result(
+        VoiceReminderResult(
+            outcome=VoiceReminderOutcome.PROCESSED,
+            text_result=text_result,
+        )
+    )
+
+    assert "Reminder created" in message
+    assert "walk the dog" in message
+
+
+def test_voice_result_format_for_pending_edit_time_asks_for_text() -> None:
+    message = format_voice_reminder_result(
+        VoiceReminderResult(outcome=VoiceReminderOutcome.PENDING_EDIT_TIME)
+    )
+
+    assert message == "Send the new time as text or press Cancel"
 
 
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:

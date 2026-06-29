@@ -22,6 +22,12 @@ class ReminderSourceType(StrEnum):
     MANUAL = "manual"
 
 
+class ParserIntent(StrEnum):
+    REMINDER = "reminder"
+    NOTE = "note"
+    UNKNOWN = "unknown"
+
+
 class ReminderDeliveryStatus(StrEnum):
     PENDING = "pending"
     SENDING = "sending"

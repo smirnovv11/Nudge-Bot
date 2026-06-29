@@ -8,7 +8,8 @@ from nudge_bot.reminders.enums import (
     ReminderStatus,
     ReminderType,
 )
-from nudge_bot.reminders.services.schemas import DraftActionResult
+from nudge_bot.reminders.services.intake import SOURCE_METADATA_PAYLOAD_KEY, SOURCE_TYPE_PAYLOAD_KEY
+from nudge_bot.reminders.services.schemas import DraftActionOutcome, DraftActionResult
 from nudge_bot.reminders.services.time import draft_display_timezone, is_expired, to_utc
 from nudge_bot.storage.models import Draft, Reminder
 from nudge_bot.storage.unit_of_work import UnitOfWork
@@ -39,14 +40,16 @@ class DraftFlowService:
             raise ValueError("draft cannot be confirmed without parsed reminder fields")
 
         display_timezone = draft_display_timezone(draft)
+        source_type = _draft_source_type(draft)
+        source_metadata = _draft_source_metadata(draft)
         reminder = Reminder(
             user_id=user_id,
             type=ReminderType.ONE_OFF,
             status=ReminderStatus.ACTIVE,
             reminder_text=draft.parsed_text,
             due_at=draft.parsed_due_at,
-            source_type=ReminderSourceType.TEXT,
-            extra={},
+            source_type=source_type,
+            extra=source_metadata,
         )
         uow.reminders.add(reminder)
         draft.status = DraftStatus.CONFIRMED
@@ -54,7 +57,7 @@ class DraftFlowService:
         await uow.session.flush()
 
         return DraftActionResult(
-            outcome="confirmed",
+            outcome=DraftActionOutcome.CONFIRMED,
             draft=draft,
             changed=True,
             display_timezone=display_timezone,
@@ -86,7 +89,7 @@ class DraftFlowService:
         await uow.session.flush()
 
         return DraftActionResult(
-            outcome="cancelled",
+            outcome=DraftActionOutcome.CANCELLED,
             draft=draft,
             changed=True,
             display_timezone=draft_display_timezone(draft),
@@ -102,21 +105,21 @@ async def _inactive_draft_result(
 
     if draft.status == DraftStatus.CONFIRMED:
         return DraftActionResult(
-            outcome="already_confirmed",
+            outcome=DraftActionOutcome.ALREADY_CONFIRMED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
         )
     if draft.status == DraftStatus.CANCELLED:
         return DraftActionResult(
-            outcome="already_cancelled",
+            outcome=DraftActionOutcome.ALREADY_CANCELLED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
         )
     if draft.status == DraftStatus.EXPIRED:
         return DraftActionResult(
-            outcome="expired",
+            outcome=DraftActionOutcome.EXPIRED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
@@ -126,10 +129,25 @@ async def _inactive_draft_result(
         draft.updated_at = now_utc
         await uow.session.flush()
         return DraftActionResult(
-            outcome="expired",
+            outcome=DraftActionOutcome.EXPIRED,
             draft=draft,
             changed=True,
             display_timezone=display_timezone,
         )
 
     return None
+
+
+def _draft_source_type(draft: Draft) -> ReminderSourceType:
+    raw_source_type = draft.payload.get(SOURCE_TYPE_PAYLOAD_KEY)
+    if isinstance(raw_source_type, str):
+        try:
+            return ReminderSourceType(raw_source_type)
+        except ValueError:
+            return ReminderSourceType.TEXT
+    return ReminderSourceType.TEXT
+
+
+def _draft_source_metadata(draft: Draft) -> dict[str, object]:
+    raw_metadata = draft.payload.get(SOURCE_METADATA_PAYLOAD_KEY)
+    return raw_metadata if isinstance(raw_metadata, dict) else {}

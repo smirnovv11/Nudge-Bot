@@ -4,9 +4,10 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal
 
 from dateparser.search import search_dates
+
+from nudge_bot.reminders.enums import ParserIntent
 
 CONFIDENT_PARSE_THRESHOLD = 0.75
 SUPPORTED_DATE_LANGUAGES = ["ru", "en"]
@@ -101,7 +102,7 @@ class ParsedReminderDraft:
     reminder_text: str | None
     due_at: datetime | None
     parse_confidence: float
-    intent_kind: Literal["reminder", "note", "unknown"]
+    intent_kind: ParserIntent
     needs_confirmation: bool
 
 
@@ -129,7 +130,7 @@ def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedRem
             reminder_text=None,
             due_at=None,
             parse_confidence=0.0,
-            intent_kind="unknown",
+            intent_kind=ParserIntent.UNKNOWN,
             needs_confirmation=True,
         )
 
@@ -140,7 +141,7 @@ def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedRem
             reminder_text=note_text,
             due_at=None,
             parse_confidence=1.0,
-            intent_kind="note",
+            intent_kind=ParserIntent.NOTE,
             needs_confirmation=False,
         )
 
@@ -150,7 +151,7 @@ def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedRem
             reminder_text=_strip_common_reminder_prefix(normalized_text),
             due_at=None,
             parse_confidence=0.35,
-            intent_kind="reminder",
+            intent_kind=ParserIntent.REMINDER,
             needs_confirmation=True,
         )
 
@@ -161,7 +162,7 @@ def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedRem
             reminder_text=normalized_text,
             due_at=None,
             parse_confidence=0.2,
-            intent_kind="unknown",
+            intent_kind=ParserIntent.UNKNOWN,
             needs_confirmation=True,
         )
 
@@ -177,7 +178,7 @@ def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedRem
         reminder_text=reminder_text,
         due_at=temporal_match.due_at,
         parse_confidence=temporal_match.confidence,
-        intent_kind="reminder",
+        intent_kind=ParserIntent.REMINDER,
         needs_confirmation=temporal_match.needs_confirmation,
     )
 
