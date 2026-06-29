@@ -7,8 +7,13 @@ import pytest
 
 from nudge_bot.common.constants import DRAFT_EXPIRATION_HOURS
 from nudge_bot.config import Settings
-from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
+from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderSourceType, ReminderStatus
 from nudge_bot.reminders.services import TextReminderService
+from nudge_bot.reminders.services.intake import (
+    SOURCE_METADATA_PAYLOAD_KEY,
+    SOURCE_TYPE_PAYLOAD_KEY,
+    TIMEZONE_PAYLOAD_KEY,
+)
 
 from .fakes import (
     FakeDraftRepository,
@@ -46,6 +51,8 @@ async def test_handle_text_reminder_creates_active_reminder_for_confident_parse(
     assert result.reminder is reminders.added[0]
     assert result.reminder.reminder_text == "walk the dog"
     assert result.reminder.status == ReminderStatus.ACTIVE
+    assert result.reminder.source_type == ReminderSourceType.TEXT
+    assert result.reminder.extra == {}
     assert result.reminder.due_at.tzinfo == UTC
     assert result.reminder.due_at.hour == 9
     assert result.reminder.due_at.minute == 20
@@ -83,7 +90,11 @@ async def test_handle_text_reminder_creates_pending_draft_for_uncertain_parse() 
     assert result.draft.parsed_due_at is not None
     assert result.draft.parsed_due_at.tzinfo == UTC
     assert result.draft.parse_confidence is not None
-    assert result.draft.payload == {"timezone": "Europe/Minsk"}
+    assert result.draft.payload == {
+        TIMEZONE_PAYLOAD_KEY: "Europe/Minsk",
+        SOURCE_TYPE_PAYLOAD_KEY: ReminderSourceType.TEXT.value,
+        SOURCE_METADATA_PAYLOAD_KEY: {},
+    }
     assert result.draft.expires_at == NOW.astimezone(UTC) + timedelta(hours=DRAFT_EXPIRATION_HOURS)
     assert reminders.added == []
 

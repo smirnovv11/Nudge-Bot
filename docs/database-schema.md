@@ -357,9 +357,11 @@ Do not add a GIN index on `reminders.metadata` yet. JSONB metadata is for future
 
 Do not add an index on `users.username` yet. Telegram usernames can change and the bot's primary lookup is `telegram_user_id`.
 
-## Future Extensions
+## Current Voice Metadata
 
-Voice creation can use `source_type = voice` and store transcript metadata in `reminders.metadata` or `drafts.payload`.
+Voice creation uses `source_type = voice` and stores minimal transcript metadata in `reminders.metadata` or `drafts.payload`: transcription language, model, duration, Telegram `file_unique_id`, and MIME type. Do not store raw audio or duplicate transcript text in metadata.
+
+## Future Extensions
 
 Idea inbox should use a future separate `notes` or `inbox_items` table. MVP should not overload `reminders` with note rows.
 

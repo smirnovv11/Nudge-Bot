@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from io import BytesIO
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,18 +14,25 @@ from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallbac
 from nudge_bot.bot.keyboards import draft_confirmation_keyboard, edit_time_cancel_keyboard
 from nudge_bot.config import Settings
 from nudge_bot.reminders.domain import ReminderResult
-from nudge_bot.reminders.enums import CallbackAction, DraftType
+from nudge_bot.reminders.enums import CallbackAction, DraftType, ReminderStatus
 from nudge_bot.reminders.services import (
     DraftFlowService,
     ReminderActionService,
     ReminderEditTimeService,
     TextReminderService,
+    VoiceReminderService,
 )
 from nudge_bot.reminders.services.schemas import (
+    DraftActionOutcome,
     DraftActionResult,
+    EditTimeOutcome,
     EditTimeResult,
+    TextReminderOutcome,
     TextReminderResult,
+    VoiceReminderOutcome,
+    VoiceReminderResult,
 )
+from nudge_bot.reminders.services.voice import BYTES_PER_MEGABYTE
 from nudge_bot.storage.unit_of_work import unit_of_work
 
 router = Router(name="reminders")
@@ -33,6 +41,7 @@ draft_flow_service = DraftFlowService()
 reminder_action_service = ReminderActionService()
 reminder_edit_time_service = ReminderEditTimeService()
 text_reminder_service = TextReminderService()
+voice_reminder_service = VoiceReminderService()
 
 
 @router.message(F.text)
@@ -54,7 +63,7 @@ async def handle_text_message(
             now=datetime.now(UTC),
             settings=settings,
         )
-        if edit_time_result.outcome == "no_pending_draft":
+        if edit_time_result.outcome == EditTimeOutcome.NO_PENDING_DRAFT:
             result = await text_reminder_service.handle_text_reminder(
                 uow,
                 telegram_user_id=message.from_user.id,
@@ -67,11 +76,11 @@ async def handle_text_message(
         else:
             result = None
 
-    if edit_time_result.outcome != "no_pending_draft":
+    if edit_time_result.outcome != EditTimeOutcome.NO_PENDING_DRAFT:
         await message.answer(format_edit_time_result(edit_time_result))
         return
 
-    if result.outcome == "draft" and result.draft is not None:
+    if result.outcome == TextReminderOutcome.DRAFT and result.draft is not None:
         await message.answer(
             format_text_reminder_result(result),
             reply_markup=draft_confirmation_keyboard(result.draft.id),
@@ -79,6 +88,77 @@ async def handle_text_message(
         return
 
     await message.answer(format_text_reminder_result(result))
+
+
+@router.message(F.voice | F.audio)
+async def handle_voice_message(
+    message: Message,
+    bot: Bot,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    if message.from_user is None:
+        return
+
+    payload = voice_payload_from_message(message)
+    if payload is None:
+        await message.answer(
+            format_voice_reminder_result(
+                VoiceReminderResult(outcome=VoiceReminderOutcome.UNSUPPORTED)
+            )
+        )
+        return
+
+    file_size = payload["file_size"]
+    if file_size is not None and file_size > settings.voice_max_file_size_mb * BYTES_PER_MEGABYTE:
+        await message.answer(
+            format_voice_reminder_result(
+                VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE)
+            )
+        )
+        return
+
+    try:
+        audio = await download_telegram_audio(bot, payload["file_id"])
+    except TelegramBadRequest:
+        logger.exception(
+            "voice download failed",
+            extra={"file_unique_id": payload["file_unique_id"]},
+        )
+        await message.answer(
+            format_voice_reminder_result(
+                VoiceReminderResult(outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED)
+            )
+        )
+        return
+
+    async with unit_of_work(session_factory) as uow:
+        result = await voice_reminder_service.handle_voice_reminder(
+            uow,
+            telegram_user_id=message.from_user.id,
+            username=message.from_user.username,
+            locale=message.from_user.language_code,
+            audio=audio,
+            source_file_unique_id=payload["file_unique_id"],
+            duration_seconds=payload["duration"],
+            file_size=file_size,
+            mime_type=payload["mime_type"],
+            now=datetime.now(UTC),
+            settings=settings,
+        )
+
+    if (
+        result.text_result is not None
+        and result.text_result.outcome == TextReminderOutcome.DRAFT
+        and result.text_result.draft is not None
+    ):
+        await message.answer(
+            format_voice_reminder_result(result),
+            reply_markup=draft_confirmation_keyboard(result.text_result.draft.id),
+        )
+        return
+
+    await message.answer(format_voice_reminder_result(result))
 
 
 @router.callback_query(ReminderDraftCallback.filter(F.action.in_({"confirm", "cancel"})))
@@ -203,7 +283,7 @@ async def handle_reminder_action_callback(
             )
             return
 
-        if edit_time_result.outcome == "awaiting_input":
+        if edit_time_result.outcome == EditTimeOutcome.AWAITING_INPUT:
             await callback.answer("Already waiting for a new time", show_alert=True)
             return
 
@@ -216,38 +296,57 @@ async def handle_reminder_action_callback(
 
 
 def format_text_reminder_result(result: TextReminderResult) -> str:
-    if result.outcome == "created" and result.reminder is not None:
+    if result.outcome == TextReminderOutcome.CREATED and result.reminder is not None:
         return (
             "✅ Reminder created\n\n"
             f"📝 {result.reminder.reminder_text}\n"
             f"🕒 {_format_datetime(result.reminder.due_at, result.display_timezone)}"
         )
 
-    if result.outcome == "draft" and result.draft is not None:
+    if result.outcome == TextReminderOutcome.DRAFT and result.draft is not None:
         return (
             "✨ Create this reminder?\n\n"
             f"📝 {result.draft.parsed_text}\n"
             f"🕒 {_format_datetime(result.draft.parsed_due_at, result.display_timezone)}"
         )
 
-    if result.outcome == "note":
+    if result.outcome == TextReminderOutcome.NOTE:
         return "🗒️ Notes are coming later\nSend a reminder with a time"
 
     return "🤔 I could not find a reminder time\nTry something like: walk the dog in 20 minutes"
 
 
+def format_voice_reminder_result(result: VoiceReminderResult) -> str:
+    if result.text_result is not None:
+        return format_text_reminder_result(result.text_result)
+
+    if result.outcome == VoiceReminderOutcome.PENDING_EDIT_TIME:
+        return "Send the new time as text or press Cancel"
+
+    if result.outcome == VoiceReminderOutcome.EMPTY_TRANSCRIPT:
+        return "I could not hear a reminder in that voice message\nTry sending it as text"
+
+    if result.outcome == VoiceReminderOutcome.TOO_LARGE:
+        return "That audio is too large for voice reminders\nTry a shorter voice message"
+
+    if result.outcome == VoiceReminderOutcome.UNSUPPORTED:
+        return "This audio message is not supported yet\nTry sending a Telegram voice message"
+
+    return "Voice input is unavailable locally right now\nSend the reminder as text"
+
+
 def format_draft_action_result(result: DraftActionResult) -> str:
-    if result.outcome == "confirmed" and result.reminder is not None:
+    if result.outcome == DraftActionOutcome.CONFIRMED and result.reminder is not None:
         due_at = _format_datetime(result.reminder.due_at, result.display_timezone)
         return f"✅ Reminder created\n\n📝 {result.reminder.reminder_text}\n🕒 {due_at}"
 
-    if result.outcome == "cancelled":
+    if result.outcome == DraftActionOutcome.CANCELLED:
         return "✖️ Reminder draft cancelled"
 
-    if result.outcome == "already_confirmed":
+    if result.outcome == DraftActionOutcome.ALREADY_CONFIRMED:
         return "✅ This reminder draft was already confirmed"
 
-    if result.outcome == "expired":
+    if result.outcome == DraftActionOutcome.EXPIRED:
         return "⌛ This reminder draft expired\nSend the reminder again"
 
     return "✖️ This reminder draft was already cancelled"
@@ -257,42 +356,46 @@ def format_reminder_action_result(
     result: ReminderResult,
     display_timezone: str | None = None,
 ) -> str:
-    if result.status.value == "completed":
+    if result.status == ReminderStatus.COMPLETED:
         return "✅ Reminder completed"
 
-    if result.status.value == "snoozed":
+    if result.status == ReminderStatus.SNOOZED:
         return f"🔁 Reminder repeated\n🕒 {_format_datetime(result.due_at, display_timezone)}"
 
     return "👌 Reminder already handled"
 
 
 def format_edit_time_result(result: EditTimeResult) -> str:
-    if result.outcome == "awaiting_input":
+    if result.outcome == EditTimeOutcome.AWAITING_INPUT:
         return "Отправьте новое время\nНапример: завтра в 9 / через 20 минут"
 
-    if result.outcome == "rescheduled" and result.reminder is not None:
+    if result.outcome == EditTimeOutcome.RESCHEDULED and result.reminder is not None:
         return (
             "✅ Reminder rescheduled\n"
             f"🕒 {_format_datetime(result.reminder.due_at, result.display_timezone)}"
         )
 
-    if result.outcome == "unknown":
+    if result.outcome == EditTimeOutcome.UNKNOWN:
         return "Не получилось понять новое время\nПопробуйте: завтра в 9 / через 20 минут"
 
-    if result.outcome == "expired":
+    if result.outcome == EditTimeOutcome.EXPIRED:
         return "This time edit expired\nPress Choose time again"
 
-    if result.outcome == "already_handled":
+    if result.outcome == EditTimeOutcome.ALREADY_HANDLED:
         return "This reminder is already handled"
 
-    if result.outcome == "cancelled":
+    if result.outcome == EditTimeOutcome.CANCELLED:
         return "This time edit is no longer available"
 
     return "No reminder is waiting for a new time"
 
 
 def should_send_edit_time_prompt(result: EditTimeResult) -> bool:
-    return result.outcome == "awaiting_input" and result.changed and result.draft is not None
+    return (
+        result.outcome == EditTimeOutcome.AWAITING_INPUT
+        and result.changed
+        and result.draft is not None
+    )
 
 
 def reminder_action_callback_key(
@@ -317,3 +420,31 @@ def _format_datetime(value: datetime | None, timezone: object = None) -> str:
         except ZoneInfoNotFoundError:
             value = value.astimezone(ZoneInfo("UTC"))
     return value.strftime("%Y-%m-%d %H:%M")
+
+
+def voice_payload_from_message(message: Message) -> dict[str, object] | None:
+    if message.voice is not None:
+        return {
+            "file_id": message.voice.file_id,
+            "file_unique_id": message.voice.file_unique_id,
+            "duration": message.voice.duration,
+            "mime_type": message.voice.mime_type,
+            "file_size": message.voice.file_size,
+        }
+
+    if message.audio is not None:
+        return {
+            "file_id": message.audio.file_id,
+            "file_unique_id": message.audio.file_unique_id,
+            "duration": message.audio.duration,
+            "mime_type": message.audio.mime_type,
+            "file_size": message.audio.file_size,
+        }
+
+    return None
+
+
+async def download_telegram_audio(bot: Bot, file_id: object) -> bytes:
+    buffer = BytesIO()
+    await bot.download(file_id, destination=buffer)
+    return buffer.getvalue()

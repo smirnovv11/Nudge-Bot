@@ -13,7 +13,7 @@ from nudge_bot.reminders.enums import (
     ReminderStatus,
 )
 from nudge_bot.reminders.parser import parse_reminder_text
-from nudge_bot.reminders.services.schemas import EditTimeResult
+from nudge_bot.reminders.services.schemas import EditTimeOutcome, EditTimeResult
 from nudge_bot.reminders.services.time import (
     draft_display_timezone,
     is_expired,
@@ -70,7 +70,7 @@ class ReminderEditTimeService:
 
         if reminder.status not in EDITABLE_REMINDER_STATUSES:
             return EditTimeResult(
-                outcome="already_handled",
+                outcome=EditTimeOutcome.ALREADY_HANDLED,
                 changed=False,
                 display_timezone=timezone,
                 reminder=reminder,
@@ -111,7 +111,7 @@ class ReminderEditTimeService:
         await uow.session.flush()
 
         return EditTimeResult(
-            outcome="awaiting_input",
+            outcome=EditTimeOutcome.AWAITING_INPUT,
             changed=True,
             display_timezone=timezone,
             reminder=reminder,
@@ -147,7 +147,7 @@ class ReminderEditTimeService:
         )
         if draft is None:
             return EditTimeResult(
-                outcome="no_pending_draft",
+                outcome=EditTimeOutcome.NO_PENDING_DRAFT,
                 changed=False,
                 display_timezone=timezone,
             )
@@ -157,7 +157,7 @@ class ReminderEditTimeService:
             draft.updated_at = now_utc
             await uow.session.flush()
             return EditTimeResult(
-                outcome="expired",
+                outcome=EditTimeOutcome.EXPIRED,
                 changed=True,
                 display_timezone=draft_display_timezone(draft) or timezone,
                 draft=draft,
@@ -169,7 +169,7 @@ class ReminderEditTimeService:
             draft.updated_at = now_utc
             await uow.session.flush()
             return EditTimeResult(
-                outcome="cancelled",
+                outcome=EditTimeOutcome.CANCELLED,
                 changed=True,
                 display_timezone=draft_display_timezone(draft) or timezone,
                 draft=draft,
@@ -187,7 +187,7 @@ class ReminderEditTimeService:
             draft.updated_at = now_utc
             await uow.session.flush()
             return EditTimeResult(
-                outcome="already_handled",
+                outcome=EditTimeOutcome.ALREADY_HANDLED,
                 changed=True,
                 display_timezone=draft_display_timezone(draft) or timezone,
                 reminder=reminder,
@@ -203,7 +203,7 @@ class ReminderEditTimeService:
             draft.updated_at = now_utc
             await uow.session.flush()
             return EditTimeResult(
-                outcome="unknown",
+                outcome=EditTimeOutcome.UNKNOWN,
                 changed=False,
                 display_timezone=draft_display_timezone(draft) or timezone,
                 reminder=reminder,
@@ -223,7 +223,7 @@ class ReminderEditTimeService:
         await uow.session.flush()
 
         return EditTimeResult(
-            outcome="rescheduled",
+            outcome=EditTimeOutcome.RESCHEDULED,
             changed=True,
             display_timezone=draft_display_timezone(draft) or timezone,
             reminder=reminder,
@@ -247,7 +247,7 @@ class ReminderEditTimeService:
 
         if edit_time_reminder_id(draft) == reminder_id:
             return EditTimeResult(
-                outcome="awaiting_input",
+                outcome=EditTimeOutcome.AWAITING_INPUT,
                 changed=False,
                 display_timezone=draft_display_timezone(draft),
                 draft=draft,

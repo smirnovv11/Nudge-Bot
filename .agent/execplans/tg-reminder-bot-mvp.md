@@ -39,7 +39,8 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-28 21:20Z) Completed a lightweight `Choose time` test-stabilization pass by adding unit coverage for replacing a pending edit-time draft that points at a different reminder, without expanding into PostgreSQL race or multi-worker integration coverage.
 - [ ] Add tests for parsing, reminder state transitions, idempotent button handling, and worker claiming. Current state: parser, draft-flow service, confirmation keyboard, confirm/cancel idempotency, worker tick, delivery success/failure, fired-reminder callback idempotency, auto-repeat, and `Choose time` edit-flow tests exist; PostgreSQL-backed integration coverage is deliberately deferred until after the next product slice is planned.
 - [x] (2026-06-28 21:20Z) Ran local validation with bundled Python and repository-local uv cache: pytest passed with 71 tests, Ruff lint passed, and Ruff format check passed.
-- [ ] Plan voice input as the next product milestone: add voice as a new input strategy that transcribes Telegram voice/audio, stores transcript metadata, and reuses the existing parser, confirmation draft flow, reminder service, UTC persistence, and worker path.
+- [x] (2026-06-28 22:05Z) Implemented voice/audio reminder creation as the next input strategy: Telegram voice/audio is transcribed locally with `faster-whisper`, routed through the shared parser/intake flow, and stored as `source_type = voice` with minimal transcript metadata.
+- [x] (2026-06-28 22:15Z) Ran post-voice validation through the existing `.venv`: pytest passed with 80 tests, Ruff lint passed, and Ruff format check passed. `uv run pytest` is blocked until `uv.lock` can be updated with network access for `faster-whisper`.
 
 ## Surprises & Discoveries
 
@@ -78,6 +79,9 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: A user can only have one pending edit-time session, so choosing time for a different reminder should retire the older pending draft before creating the new one.
   Evidence: `ReminderEditTimeService._handle_existing_pending_draft` cancels the old draft when its payload points at another reminder, and `tests/reminders/services/test_edit_time_service.py::test_choose_time_replaces_pending_draft_for_other_reminder` now locks in that lifecycle behavior.
+
+- Observation: Voice input fits the existing intake boundary when source metadata is made explicit.
+  Evidence: `ReminderIntakeService.handle_reminder_text` accepts `source_type` and `source_metadata`; `VoiceReminderService` transcribes audio and delegates the transcript to that shared path, while `DraftFlowService.confirm_draft` preserves voice source metadata from draft payloads.
 
 ## Decision Log
 
@@ -169,9 +173,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: The text parser, confidence layer, draft confirmation flow, reminder service, UTC storage rules, and worker path are already the durable creation pipeline. Voice should add transcription and metadata at the input boundary, then hand the transcript to the same pipeline.
   Date/Author: 2026-06-28 / Codex
 
+- Decision: Use local `faster-whisper` for first voice transcription with default model `small`, compute type `int8`, device `cpu`, and language `ru`.
+  Rationale: This keeps voice input private-first and avoids sending audio to an external API. The defaults balance quality and local CPU cost for short Telegram reminder messages.
+  Date/Author: 2026-06-28 / User and Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, and a text-based `Choose time` edit flow. The bot can now create active reminders from confident text parses, create confirmation drafts from uncertain parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. A lightweight stabilization pass for the new `Choose time` lifecycle is green, and the next planned product work is voice input design.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, a text-based `Choose time` edit flow, and local voice/audio reminder intake. The bot can now create active reminders from confident text or voice parses, create confirmation drafts from uncertain text or voice parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing.
 
 ## Context and Orientation
 
@@ -189,7 +197,7 @@ Idempotent means repeating the same action is safe. If a user taps `Read` twice,
 
 A repository is a small class that owns database queries for one group of records, such as users or reminders. A Unit of Work owns one database session and exposes repositories for one transaction, such as one bot update or one worker batch.
 
-An input strategy is a small object that knows how to turn one kind of user input into a parsed reminder draft. Text input is the first strategy. Future voice input should transcribe the audio first and then reuse the same parser and reminder service path.
+An input strategy is a small object that knows how to turn one kind of user input into a parsed reminder draft. Text input passes text directly to the parser. Voice input transcribes Telegram voice/audio first and then reuses the same parser and reminder service path.
 
 ## Plan of Work
 
@@ -352,7 +360,7 @@ The short continuation handoff is recorded in `docs/handoff.md`.
 
 The product source of truth is `.omx/specs/deep-interview-tg-reminder-bot.md`.
 
-The first implementation should keep the MVP private-first and free. Do not add payments, ads, recurring reminders, voice input, or a full idea inbox in the first milestone.
+The implementation should keep the MVP private-first and free. Do not add payments, ads, recurring reminders, or a full idea inbox in this milestone.
 
 ## Interfaces and Dependencies
 
@@ -364,6 +372,7 @@ Use these dependencies:
 - `alembic` for schema migrations.
 - `pydantic-settings` for environment-driven configuration.
 - `dateparser` for natural language date parsing.
+- `faster-whisper` for local Telegram voice/audio transcription.
 - `pytest` and `pytest-asyncio` for tests.
 - `ruff` for linting and formatting.
 
@@ -374,7 +383,7 @@ Define a parser contract in `src/nudge_bot/reminders/parser.py`:
         reminder_text: str | None
         due_at: datetime | None
         parse_confidence: float
-        intent_kind: Literal["reminder", "note", "unknown"]
+        intent_kind: ParserIntent
         needs_confirmation: bool
 
     def parse_reminder_text(text: str, *, now: datetime, timezone: str) -> ParsedReminderDraft:
@@ -416,7 +425,7 @@ Best practices that must hold during implementation:
 - Avoid logging full reminder text by default.
 - Write domain tests before relying on manual Telegram testing.
 
-When future voice input is added, do not fork the reminder lifecycle. Add a voice input strategy that turns Telegram voice/audio into text plus metadata, then route the transcript through the same parser, draft confirmation, reminder service, and persistence flow used by text reminders.
+Voice input must not fork the reminder lifecycle. It turns Telegram voice/audio into text plus metadata, then routes the transcript through the same parser, draft confirmation, reminder service, and persistence flow used by text reminders.
 
 Revision note: Initial ExecPlan created to capture the selected Python stack, MVP scope, architecture, best practices, validation path, and future stack-change rule.
 
@@ -437,3 +446,7 @@ Revision note: Choose-time review fixes applied on 2026-06-28. Pending edit-time
 Revision note: Choose-time follow-up hardening applied on 2026-06-28. The edit-time payload contract is centralized, pending draft creation serializes on the user row, the duplicate-draft migration cleans up older pending duplicates before creating the unique index, and README reflects the implemented text-based `Choose time` flow.
 
 Revision note: Choose-time test stabilization completed on 2026-06-28. A focused unit test now covers replacing a pending edit-time draft for another reminder, full validation is green with 71 tests, and the plan now points to voice input as the next input-strategy milestone.
+
+Revision note: Voice input implemented on 2026-06-28. Telegram voice/audio is downloaded by the bot route, transcribed locally with `faster-whisper`, processed through shared source-aware reminder intake, and stored as voice-sourced reminders or drafts with minimal transcript metadata.
+
+Revision note: Voice validation on 2026-06-28 used the existing `.venv` because network access to PyPI was denied while resolving `faster-whisper` for `uv run`. Update `uv.lock` and run `uv sync` once network access is available.
