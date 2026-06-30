@@ -42,6 +42,7 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-28 22:05Z) Implemented voice/audio reminder creation as the next input strategy: Telegram voice/audio is transcribed locally with `faster-whisper`, routed through the shared parser/intake flow, and stored as `source_type = voice` with minimal transcript metadata.
 - [x] (2026-06-28 22:15Z) Ran post-voice validation through the existing `.venv`: pytest passed with 80 tests, Ruff lint passed, and Ruff format check passed. `uv run pytest` is blocked until `uv.lock` can be updated with network access for `faster-whisper`.
 - [x] (2026-06-30 00:00Z) Optimized the local Whisper voice path for MVP responsiveness: default model changed from `small` to `base`, voice duration is capped at 15 seconds, transcription warms at bot startup, fast single-beam/VAD options are used, and accepted voice messages immediately show `Transcribing...`.
+- [x] (2026-06-30 00:00Z) Reduced auto-repeat notification spam: when a timeout repeat is sent for an already `sent` reminder, the worker uses the previous successful Telegram message id from `reminder_attempts` to delete the older fired message, falling back to removing the old inline keyboard if deletion fails.
 
 ## Surprises & Discoveries
 
@@ -86,6 +87,9 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: Local CPU transcription must optimize perceived latency, not only raw model time.
   Evidence: Voice handling now sends `Transcribing...` before download/transcription, warms the `faster-whisper` model at bot startup, rejects voice messages longer than `VOICE_MAX_DURATION_SECONDS`, and calls `model.transcribe` with `beam_size=1`, `best_of=1`, `without_timestamps=True`, `condition_on_previous_text=False`, and `vad_filter=True`.
+
+- Observation: Unattended auto-repeat can preserve reminder pressure without accumulating active fired messages.
+  Evidence: `ReminderToSend` now carries whether the due claim came from `sent` status plus the latest successful `telegram_message_id`; after the new message is accepted, the worker deletes the previous message or removes its keyboard if deletion is refused.
 
 ## Decision Log
 
@@ -145,6 +149,10 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: A delivered one-off reminder that remains `sent` still needs one next scheduler timestamp. Reusing `due_at` keeps the MVP schema small, avoids introducing recurring-reminder concepts, and lets `Read` stop repeats by moving the reminder to `completed`.
   Date/Author: 2026-06-28 / Codex
 
+- Decision: Timeout auto-repeat should replace the previous fired Telegram message when possible.
+  Rationale: Re-sending every unattended reminder without cleanup creates chat and notification spam when several reminders are unread. Deleting only after the new message is accepted keeps delivery pressure while reducing stale controls; falling back to keyboard removal keeps old messages from looking current when deletion is unavailable.
+  Date/Author: 2026-06-30 / User and Codex
+
 - Decision: `Choose time` stores edit state in `drafts` with `type = reminder_edit_time` and a small JSON payload containing the reminder id, notification id, callback key, and display timezone.
   Rationale: The schema already includes durable drafts and the required draft enum value, so no migration is needed. Keeping the edit state in PostgreSQL makes the flow survive process restarts and keeps Telegram handlers thin.
   Date/Author: 2026-06-28 / Codex
@@ -187,7 +195,7 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, a text-based `Choose time` edit flow, and local voice/audio reminder intake. The bot can now create active reminders from confident text or voice parses, create confirmation drafts from uncertain text or voice parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, a text-based `Choose time` edit flow, and local voice/audio reminder intake. The bot can now create active reminders from confident text or voice parses, create confirmation drafts from uncertain text or voice parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. Timeout repeats now try to remove the previous fired message so the chat keeps one current notification per repeatedly unread reminder.
 
 ## Context and Orientation
 
@@ -333,7 +341,7 @@ The user-visible acceptance cases are:
 5. Pressing `Repeat` schedules the reminder again after the configured interval.
 6. Pressing `Choose time`, then sending "через 20 минут" or "tomorrow at 9", reschedules the same reminder to the parsed time without changing the reminder text.
 7. Pressing `Read` twice remains safe and does not duplicate state.
-8. If the user does not press any button after a delivered notification, the worker sends the same reminder again after the user's configured repeat interval.
+8. If the user does not press any button after a delivered notification, the worker sends the same reminder again after the user's configured repeat interval and cleans up the previous fired message when Telegram allows it.
 9. If the worker restarts, reminders stored in PostgreSQL are still found and delivered.
 
 The technical acceptance cases are:
@@ -342,7 +350,7 @@ The technical acceptance cases are:
 2. Tests cover reminder status transitions.
 3. Tests cover idempotent callback handling.
 4. Tests cover worker claiming so the same due reminder is not sent twice by one scan.
-5. Tests cover auto-repeat scheduling from successful delivery and due claiming of `sent` reminders.
+5. Tests cover auto-repeat scheduling from successful delivery, due claiming of `sent` reminders, and cleanup of the previous fired Telegram message.
 6. Tests cover `Choose time` draft creation, repeated-button idempotency, parsing a replacement time, low-confidence/unknown input, and expired edit drafts.
 7. Ruff lint and format checks pass.
 
@@ -460,3 +468,5 @@ Revision note: Voice input implemented on 2026-06-28. Telegram voice/audio is do
 Revision note: Voice validation on 2026-06-28 used the existing `.venv` because network access to PyPI was denied while resolving `faster-whisper` for `uv run`. Update `uv.lock` and run `uv sync` once network access is available.
 
 Revision note: Voice performance pass on 2026-06-30 changed the default local model to `base`, added `VOICE_MAX_DURATION_SECONDS`, warmed the local transcriber at bot startup, enabled fast `faster-whisper` transcribe options, and added a `Transcribing...` Telegram progress message.
+
+Revision note: Auto-repeat cleanup added on 2026-06-30. Due claiming now identifies reminders claimed from `sent` status and carries the previous successful Telegram message id, while the worker deletes the previous fired message after the replacement is accepted or removes its inline keyboard if deletion fails.

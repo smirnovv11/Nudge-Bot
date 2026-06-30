@@ -44,6 +44,22 @@ text_reminder_service = TextReminderService()
 voice_reminder_service = VoiceReminderService()
 
 
+class VoiceDownloadTooLargeError(Exception):
+    pass
+
+
+class LimitedBytesIO(BytesIO):
+    def __init__(self, *, max_bytes: int) -> None:
+        super().__init__()
+        self._max_bytes = max_bytes
+
+    def write(self, data: bytes) -> int:
+        if self.tell() + len(data) > self._max_bytes:
+            raise VoiceDownloadTooLargeError
+
+        return super().write(data)
+
+
 async def warm_up_voice_services(settings: Settings) -> None:
     try:
         await voice_reminder_service.warm_up(settings)
@@ -117,24 +133,32 @@ async def handle_voice_message(
         return
 
     file_size = payload["file_size"]
-    if file_size is not None and file_size > settings.voice_max_file_size_mb * BYTES_PER_MEGABYTE:
-        await message.answer(
-            format_voice_reminder_result(
-                VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE)
-            )
-        )
-        return
-    duration = payload["duration"]
-    if duration is not None and duration > settings.voice_max_duration_seconds:
-        await message.answer(
-            format_voice_reminder_result(VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LONG))
-        )
+    validation_result = voice_reminder_service.validate_voice_input(
+        file_size=file_size,
+        duration_seconds=payload["duration"],
+        settings=settings,
+    )
+    if validation_result is not None:
+        await message.answer(format_voice_reminder_result(validation_result))
         return
 
     processing_message = await message.answer("Transcribing...")
 
     try:
-        audio = await download_telegram_audio(bot, payload["file_id"])
+        audio = await download_telegram_audio(
+            bot,
+            payload["file_id"],
+            max_bytes=settings.voice_max_file_size_mb * BYTES_PER_MEGABYTE,
+        )
+    except VoiceDownloadTooLargeError:
+        await edit_voice_processing_message(
+            message=message,
+            processing_message=processing_message,
+            text=format_voice_reminder_result(
+                VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE),
+            ),
+        )
+        return
     except TelegramBadRequest:
         logger.exception(
             "voice download failed",
@@ -149,16 +173,51 @@ async def handle_voice_message(
         )
         return
 
+    validation_result = voice_reminder_service.validate_voice_input(
+        audio=audio,
+        file_size=file_size,
+        duration_seconds=payload["duration"],
+        settings=settings,
+    )
+    if validation_result is not None:
+        await edit_voice_processing_message(
+            message=message,
+            processing_message=processing_message,
+            text=format_voice_reminder_result(validation_result),
+        )
+        return
+
     async with unit_of_work(session_factory) as uow:
-        result = await voice_reminder_service.handle_voice_reminder(
+        pending_edit_result = await voice_reminder_service.reject_pending_edit_time(
             uow,
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
             locale=message.from_user.language_code,
-            audio=audio,
-            source_file_unique_id=payload["file_unique_id"],
-            duration_seconds=payload["duration"],
-            file_size=file_size,
+            now=datetime.now(UTC),
+            settings=settings,
+        )
+    if pending_edit_result is not None:
+        await edit_voice_processing_message(
+            message=message,
+            processing_message=processing_message,
+            text=format_voice_reminder_result(pending_edit_result),
+        )
+        return
+
+    transcription = await voice_reminder_service.transcribe_voice_audio(
+        audio=audio,
+        source_file_unique_id=payload["file_unique_id"],
+        duration_seconds=payload["duration"],
+        settings=settings,
+    )
+
+    async with unit_of_work(session_factory) as uow:
+        result = await voice_reminder_service.process_voice_transcription(
+            uow,
+            telegram_user_id=message.from_user.id,
+            username=message.from_user.username,
+            locale=message.from_user.language_code,
+            transcription=transcription,
             mime_type=payload["mime_type"],
             now=datetime.now(UTC),
             settings=settings,
@@ -470,8 +529,8 @@ def voice_payload_from_message(message: Message) -> dict[str, object] | None:
     return None
 
 
-async def download_telegram_audio(bot: Bot, file_id: object) -> bytes:
-    buffer = BytesIO()
+async def download_telegram_audio(bot: Bot, file_id: object, *, max_bytes: int) -> bytes:
+    buffer = LimitedBytesIO(max_bytes=max_bytes)
     await bot.download(file_id, destination=buffer)
     return buffer.getvalue()
 

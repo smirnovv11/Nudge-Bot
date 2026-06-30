@@ -14,6 +14,8 @@ class ReminderToSend:
     reminder_text: str
     due_at: datetime
     repeat_interval_minutes: int
+    is_auto_repeat: bool = False
+    previous_telegram_message_id: int | None = None
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallback
 from nudge_bot.bot.keyboards import (
     draft_confirmation_keyboard,
@@ -9,6 +11,8 @@ from nudge_bot.bot.keyboards import (
     reminder_actions_keyboard,
 )
 from nudge_bot.bot.routers.reminders import (
+    VoiceDownloadTooLargeError,
+    download_telegram_audio,
     format_draft_action_result,
     format_edit_time_result,
     format_reminder_action_result,
@@ -28,6 +32,11 @@ from nudge_bot.reminders.services.schemas import (
     VoiceReminderResult,
 )
 from nudge_bot.storage.models import Draft, Reminder
+
+
+class OversizedDownloadBot:
+    async def download(self, file_id: object, *, destination: object) -> None:
+        destination.write(b"12345")
 
 
 def test_draft_confirmation_keyboard_packs_confirm_and_cancel_callbacks() -> None:
@@ -342,6 +351,16 @@ def test_voice_result_format_for_too_long_asks_for_short_voice() -> None:
     )
 
     assert message == "That voice message is too long for fast reminders\nTry 15 seconds or less"
+
+
+@pytest.mark.asyncio
+async def test_voice_download_stops_when_payload_exceeds_limit() -> None:
+    with pytest.raises(VoiceDownloadTooLargeError):
+        await download_telegram_audio(
+            OversizedDownloadBot(),  # type: ignore[arg-type]
+            file_id="voice-file",
+            max_bytes=4,
+        )
 
 
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:

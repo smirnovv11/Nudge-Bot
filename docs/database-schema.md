@@ -176,7 +176,7 @@ The worker finds due reminders with a query shaped like:
     AND due_at <= now()
     AND archived_at IS NULL
 
-For auto-repeat, `sent` reminders use `due_at` as the next unattended repeat time. When a notification is delivered successfully, the worker leaves the reminder in `sent` and moves `due_at` forward by `user_settings.repeat_interval_minutes`. If the user presses `Read`, the reminder becomes `completed` and stops being claimable.
+For auto-repeat, `sent` reminders use `due_at` as the next unattended repeat time. When a notification is delivered successfully, the worker leaves the reminder in `sent` and moves `due_at` forward by `user_settings.repeat_interval_minutes`. If the reminder was already `sent` before this delivery, the worker uses the previous successful `reminder_attempts.telegram_message_id` to delete the older fired Telegram message after the new one is accepted. If Telegram refuses deletion, the worker removes the old inline keyboard when possible. If the user presses `Read`, the reminder becomes `completed` and stops being claimable.
 
 The worker should claim rows atomically before sending. In PostgreSQL, the implementation can use a transaction with row locking such as `FOR UPDATE SKIP LOCKED`, or a single conditional update that sets `status = sending` and `locked_at = now()`.
 
