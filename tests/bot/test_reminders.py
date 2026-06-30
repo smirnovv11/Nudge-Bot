@@ -336,6 +336,14 @@ def test_voice_result_format_for_pending_edit_time_asks_for_text() -> None:
     assert message == "Send the new time as text or press Cancel"
 
 
+def test_voice_result_format_for_too_long_asks_for_short_voice() -> None:
+    message = format_voice_reminder_result(
+        VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LONG)
+    )
+
+    assert message == "That voice message is too long for fast reminders\nTry 15 seconds or less"
+
+
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:
     callback_data = ReminderActionCallback(
         action="repeat",

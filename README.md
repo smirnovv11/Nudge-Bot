@@ -63,8 +63,10 @@ Install dependencies and apply migrations:
     uv sync
     uv run alembic upgrade head
 
-Voice reminders use local `faster-whisper` transcription. The default model is `small` with `int8`
-CPU inference; the first voice transcription may download model files into the local model cache.
+Voice reminders use local `faster-whisper` transcription. The default model is `base` with `int8`
+CPU inference, fast single-beam decoding, VAD filtering, and a 15-second voice duration limit for
+MVP responsiveness. The bot warms the model at startup when possible; the first run may still
+download model files into the local model cache.
 
 The same commands are available through `make`:
 

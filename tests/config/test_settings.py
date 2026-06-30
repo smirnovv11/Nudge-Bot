@@ -5,6 +5,7 @@ from nudge_bot.constants import (
     DEFAULT_REPEAT_INTERVAL_MINUTES,
     DEFAULT_TIMEZONE,
     SCHEDULER_POLL_INTERVAL_SECONDS,
+    VOICE_MAX_DURATION_SECONDS,
     VOICE_MAX_FILE_SIZE_MB,
     VOICE_TRANSCRIPTION_COMPUTE_TYPE,
     VOICE_TRANSCRIPTION_DEVICE,
@@ -24,3 +25,4 @@ def test_settings_defaults_match_mvp() -> None:
     assert settings.voice_transcription_device == VOICE_TRANSCRIPTION_DEVICE
     assert settings.voice_transcription_language == VOICE_TRANSCRIPTION_LANGUAGE
     assert settings.voice_max_file_size_mb == VOICE_MAX_FILE_SIZE_MB
+    assert settings.voice_max_duration_seconds == VOICE_MAX_DURATION_SECONDS

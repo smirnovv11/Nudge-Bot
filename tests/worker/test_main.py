@@ -91,7 +91,8 @@ async def test_worker_tick_sends_claimed_reminder(monkeypatch: pytest.MonkeyPatc
 
     assert delivered == 1
     assert bot.sent_messages[0]["chat_id"] == 100
-    assert bot.sent_messages[0]["text"] == "🔔 Reminder\n\nwalk the dog"
+    assert bot.sent_messages[0]["text"] == "⏰ <i>Reminder</i>\n\n📨 walk the dog"
+    assert bot.sent_messages[0]["parse_mode"] == "HTML"
     assert reminder.status == ReminderStatus.SENT
     assert delivery_uow.reminders.mark_delivery_sent_called_with is not None
     assert (

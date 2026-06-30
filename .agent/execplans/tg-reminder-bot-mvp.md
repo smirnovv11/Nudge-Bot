@@ -41,6 +41,7 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-28 21:20Z) Ran local validation with bundled Python and repository-local uv cache: pytest passed with 71 tests, Ruff lint passed, and Ruff format check passed.
 - [x] (2026-06-28 22:05Z) Implemented voice/audio reminder creation as the next input strategy: Telegram voice/audio is transcribed locally with `faster-whisper`, routed through the shared parser/intake flow, and stored as `source_type = voice` with minimal transcript metadata.
 - [x] (2026-06-28 22:15Z) Ran post-voice validation through the existing `.venv`: pytest passed with 80 tests, Ruff lint passed, and Ruff format check passed. `uv run pytest` is blocked until `uv.lock` can be updated with network access for `faster-whisper`.
+- [x] (2026-06-30 00:00Z) Optimized the local Whisper voice path for MVP responsiveness: default model changed from `small` to `base`, voice duration is capped at 15 seconds, transcription warms at bot startup, fast single-beam/VAD options are used, and accepted voice messages immediately show `Transcribing...`.
 
 ## Surprises & Discoveries
 
@@ -82,6 +83,9 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 
 - Observation: Voice input fits the existing intake boundary when source metadata is made explicit.
   Evidence: `ReminderIntakeService.handle_reminder_text` accepts `source_type` and `source_metadata`; `VoiceReminderService` transcribes audio and delegates the transcript to that shared path, while `DraftFlowService.confirm_draft` preserves voice source metadata from draft payloads.
+
+- Observation: Local CPU transcription must optimize perceived latency, not only raw model time.
+  Evidence: Voice handling now sends `Transcribing...` before download/transcription, warms the `faster-whisper` model at bot startup, rejects voice messages longer than `VOICE_MAX_DURATION_SECONDS`, and calls `model.transcribe` with `beam_size=1`, `best_of=1`, `without_timestamps=True`, `condition_on_previous_text=False`, and `vad_filter=True`.
 
 ## Decision Log
 
@@ -173,9 +177,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: The text parser, confidence layer, draft confirmation flow, reminder service, UTC storage rules, and worker path are already the durable creation pipeline. Voice should add transcription and metadata at the input boundary, then hand the transcript to the same pipeline.
   Date/Author: 2026-06-28 / Codex
 
-- Decision: Use local `faster-whisper` for first voice transcription with default model `small`, compute type `int8`, device `cpu`, and language `ru`.
+- Decision: Use local `faster-whisper` for first voice transcription with default model `base`, compute type `int8`, device `cpu`, and language `ru`.
   Rationale: This keeps voice input private-first and avoids sending audio to an external API. The defaults balance quality and local CPU cost for short Telegram reminder messages.
   Date/Author: 2026-06-28 / User and Codex
+
+- Decision: Cap MVP voice reminders at 15 seconds and use fast local Whisper decoding.
+  Rationale: Nudge is speed-first. Short reminder commands should either transcribe quickly or ask the user for a shorter voice message instead of making the chat feel stalled.
+  Date/Author: 2026-06-30 / User and Codex
 
 ## Outcomes & Retrospective
 
@@ -450,3 +458,5 @@ Revision note: Choose-time test stabilization completed on 2026-06-28. A focused
 Revision note: Voice input implemented on 2026-06-28. Telegram voice/audio is downloaded by the bot route, transcribed locally with `faster-whisper`, processed through shared source-aware reminder intake, and stored as voice-sourced reminders or drafts with minimal transcript metadata.
 
 Revision note: Voice validation on 2026-06-28 used the existing `.venv` because network access to PyPI was denied while resolving `faster-whisper` for `uv run`. Update `uv.lock` and run `uv sync` once network access is available.
+
+Revision note: Voice performance pass on 2026-06-30 changed the default local model to `base`, added `VOICE_MAX_DURATION_SECONDS`, warmed the local transcriber at bot startup, enabled fast `faster-whisper` transcribe options, and added a `Transcribing...` Telegram progress message.

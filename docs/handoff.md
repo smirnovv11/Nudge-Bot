@@ -161,8 +161,10 @@ Lightweight stabilization added:
 Voice input added:
 
 - Telegram `voice` and `audio` messages are accepted by the reminders router.
-- Voice/audio is downloaded through aiogram, rejected before download when Telegram reports a file larger than `VOICE_MAX_FILE_SIZE_MB`, then transcribed locally with `faster-whisper`.
-- The default transcription configuration is `small` model, `int8` compute, `cpu` device, and `ru` language.
+- Voice/audio is downloaded through aiogram, rejected before download when Telegram reports a file larger than `VOICE_MAX_FILE_SIZE_MB` or longer than `VOICE_MAX_DURATION_SECONDS`, then transcribed locally with `faster-whisper`.
+- The default transcription configuration is `base` model, `int8` compute, `cpu` device, and `ru` language.
+- Voice transcription is warmed at bot startup when possible and uses fast single-beam decoding, no timestamps, no previous-text conditioning, and VAD filtering.
+- The bot immediately sends `Transcribing...` for accepted voice/audio messages, then edits that message with the final reminder result.
 - Transcripts are routed through the shared reminder intake path. Confident parses create reminders directly; uncertain parses create confirmation drafts.
 - Voice-created reminders and confirmed voice drafts use `ReminderSourceType.VOICE`.
 - Voice metadata is stored in JSON metadata/payload without raw audio or duplicate transcript text: language, duration, model, Telegram `file_unique_id`, and MIME type.

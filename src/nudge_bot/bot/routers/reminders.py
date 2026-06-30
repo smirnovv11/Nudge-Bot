@@ -44,6 +44,13 @@ text_reminder_service = TextReminderService()
 voice_reminder_service = VoiceReminderService()
 
 
+async def warm_up_voice_services(settings: Settings) -> None:
+    try:
+        await voice_reminder_service.warm_up(settings)
+    except Exception:
+        logger.warning("voice transcription warmup failed", exc_info=True)
+
+
 @router.message(F.text)
 async def handle_text_message(
     message: Message,
@@ -117,6 +124,14 @@ async def handle_voice_message(
             )
         )
         return
+    duration = payload["duration"]
+    if duration is not None and duration > settings.voice_max_duration_seconds:
+        await message.answer(
+            format_voice_reminder_result(VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LONG))
+        )
+        return
+
+    processing_message = await message.answer("Transcribing...")
 
     try:
         audio = await download_telegram_audio(bot, payload["file_id"])
@@ -125,10 +140,12 @@ async def handle_voice_message(
             "voice download failed",
             extra={"file_unique_id": payload["file_unique_id"]},
         )
-        await message.answer(
-            format_voice_reminder_result(
-                VoiceReminderResult(outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED)
-            )
+        await edit_voice_processing_message(
+            message=message,
+            processing_message=processing_message,
+            text=format_voice_reminder_result(
+                VoiceReminderResult(outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED),
+            ),
         )
         return
 
@@ -152,13 +169,19 @@ async def handle_voice_message(
         and result.text_result.outcome == TextReminderOutcome.DRAFT
         and result.text_result.draft is not None
     ):
-        await message.answer(
-            format_voice_reminder_result(result),
+        await edit_voice_processing_message(
+            message=message,
+            processing_message=processing_message,
+            text=format_voice_reminder_result(result),
             reply_markup=draft_confirmation_keyboard(result.text_result.draft.id),
         )
         return
 
-    await message.answer(format_voice_reminder_result(result))
+    await edit_voice_processing_message(
+        message=message,
+        processing_message=processing_message,
+        text=format_voice_reminder_result(result),
+    )
 
 
 @router.callback_query(ReminderDraftCallback.filter(F.action.in_({"confirm", "cancel"})))
@@ -329,6 +352,9 @@ def format_voice_reminder_result(result: VoiceReminderResult) -> str:
     if result.outcome == VoiceReminderOutcome.TOO_LARGE:
         return "That audio is too large for voice reminders\nTry a shorter voice message"
 
+    if result.outcome == VoiceReminderOutcome.TOO_LONG:
+        return "That voice message is too long for fast reminders\nTry 15 seconds or less"
+
     if result.outcome == VoiceReminderOutcome.UNSUPPORTED:
         return "This audio message is not supported yet\nTry sending a Telegram voice message"
 
@@ -448,3 +474,16 @@ async def download_telegram_audio(bot: Bot, file_id: object) -> bytes:
     buffer = BytesIO()
     await bot.download(file_id, destination=buffer)
     return buffer.getvalue()
+
+
+async def edit_voice_processing_message(
+    *,
+    message: Message,
+    processing_message: Message,
+    text: str,
+    reply_markup: object = None,
+) -> None:
+    try:
+        await processing_message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest:
+        await message.answer(text, reply_markup=reply_markup)

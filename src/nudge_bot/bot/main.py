@@ -6,6 +6,7 @@ import logging
 from aiogram import Bot, Dispatcher
 
 from nudge_bot.bot.routers.reminders import router as reminders_router
+from nudge_bot.bot.routers.reminders import warm_up_voice_services
 from nudge_bot.bot.routers.start import router as start_router
 from nudge_bot.config import get_settings
 from nudge_bot.storage.database import create_engine, create_session_factory
@@ -24,6 +25,7 @@ async def run_bot() -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(start_router)
     dispatcher.include_router(reminders_router)
+    await warm_up_voice_services(settings)
 
     logging.getLogger(__name__).info("bot: polling started")
     try:
