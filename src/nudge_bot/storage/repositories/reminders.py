@@ -8,8 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.domain import ReminderToSend
 from nudge_bot.reminders.draft_payloads import EDIT_TIME_REMINDER_ID
-from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderStatus
-from nudge_bot.storage.models import Draft, Reminder, User, UserSettings
+from nudge_bot.reminders.enums import (
+    DraftStatus,
+    DraftType,
+    ReminderDeliveryStatus,
+    ReminderStatus,
+)
+from nudge_bot.storage.models import Draft, Reminder, ReminderAttempt, User, UserSettings
 
 DELIVERABLE_STATUSES = [
     ReminderStatus.ACTIVE,
@@ -24,7 +29,7 @@ class ReminderRepository:
 
     async def claim_due(self, *, limit: int, now: datetime) -> list[ReminderToSend]:
         due_query = (
-            select(Reminder.id)
+            select(Reminder.id, Reminder.status)
             .where(
                 Reminder.archived_at.is_(None),
                 Reminder.status.in_(DELIVERABLE_STATUSES),
@@ -43,10 +48,24 @@ class ReminderRepository:
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
-        reminder_ids = list(await self._session.scalars(due_query))
+        due_rows = list(await self._session.execute(due_query))
+        reminder_statuses = {reminder_id: status for reminder_id, status in due_rows}
+        reminder_ids = list(reminder_statuses)
 
         if not reminder_ids:
             return []
+
+        previous_message_id = (
+            select(ReminderAttempt.telegram_message_id)
+            .where(
+                ReminderAttempt.reminder_id == Reminder.id,
+                ReminderAttempt.delivery_status == ReminderDeliveryStatus.SENT,
+                ReminderAttempt.telegram_message_id.is_not(None),
+            )
+            .order_by(ReminderAttempt.attempt_no.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
 
         await self._session.execute(
             update(Reminder)
@@ -62,6 +81,7 @@ class ReminderRepository:
                     UserSettings.repeat_interval_minutes,
                     DEFAULT_REPEAT_INTERVAL_MINUTES,
                 ),
+                previous_message_id,
             )
             .join(User, User.id == Reminder.user_id)
             .outerjoin(UserSettings, UserSettings.user_id == User.id)
@@ -70,17 +90,27 @@ class ReminderRepository:
         )
         rows = await self._session.execute(reminders_query)
 
-        return [
-            ReminderToSend(
-                reminder_id=reminder.id,
-                user_id=reminder.user_id,
-                telegram_user_id=telegram_user_id,
-                reminder_text=reminder.reminder_text,
-                due_at=reminder.due_at,
-                repeat_interval_minutes=repeat_interval_minutes,
+        reminders_to_send = []
+        for (
+            reminder,
+            telegram_user_id,
+            repeat_interval_minutes,
+            last_telegram_message_id,
+        ) in rows:
+            reminders_to_send.append(
+                ReminderToSend(
+                    reminder_id=reminder.id,
+                    user_id=reminder.user_id,
+                    telegram_user_id=telegram_user_id,
+                    reminder_text=reminder.reminder_text,
+                    due_at=reminder.due_at,
+                    repeat_interval_minutes=repeat_interval_minutes,
+                    is_auto_repeat=reminder_statuses[reminder.id] == ReminderStatus.SENT,
+                    previous_telegram_message_id=last_telegram_message_id,
+                )
             )
-            for reminder, telegram_user_id, repeat_interval_minutes in rows
-        ]
+
+        return reminders_to_send
 
     async def get_by_id_for_user(self, *, reminder_id: int, user_id: int) -> Reminder | None:
         return await self._session.scalar(

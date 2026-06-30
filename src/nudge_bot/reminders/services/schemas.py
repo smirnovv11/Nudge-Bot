@@ -45,6 +45,7 @@ class VoiceReminderOutcome(StrEnum):
     EMPTY_TRANSCRIPT = "empty_transcript"
     TRANSCRIPTION_FAILED = "transcription_failed"
     TOO_LARGE = "too_large"
+    TOO_LONG = "too_long"
     UNSUPPORTED = "unsupported"
     PENDING_EDIT_TIME = "pending_edit_time"
 

@@ -20,7 +20,7 @@ MVP buttons on a fired reminder:
 - `Repeat`: repeat after the user's configured short-repeat interval.
 - `Choose time`: currently returns an MVP placeholder; the edit-time state machine is still deferred.
 
-If the user does not press any button, the worker auto-repeats after the configured interval. Default repeat interval is 5 minutes.
+If the user does not press any button, the worker auto-repeats after the configured interval. Default repeat interval is 5 minutes. After a successful timeout repeat, the worker tries to delete the previous fired reminder message so unread repeats do not flood the chat; if Telegram refuses deletion, it falls back to removing the old message keyboard.
 
 ## MVP Non-Goals
 
@@ -161,12 +161,15 @@ Lightweight stabilization added:
 Voice input added:
 
 - Telegram `voice` and `audio` messages are accepted by the reminders router.
-- Voice/audio is downloaded through aiogram, rejected before download when Telegram reports a file larger than `VOICE_MAX_FILE_SIZE_MB`, then transcribed locally with `faster-whisper`.
-- The default transcription configuration is `small` model, `int8` compute, `cpu` device, and `ru` language.
+- Voice/audio is downloaded through aiogram, rejected before download when Telegram reports a file larger than `VOICE_MAX_FILE_SIZE_MB` or longer than `VOICE_MAX_DURATION_SECONDS`, then transcribed locally with `faster-whisper`.
+- The default transcription configuration is `base` model, `int8` compute, `cpu` device, and `ru` language.
+- Voice transcription is warmed at bot startup when possible and uses fast single-beam decoding, no timestamps, no previous-text conditioning, and VAD filtering.
+- The bot immediately sends `Transcribing...` for accepted voice/audio messages, then edits that message with the final reminder result.
 - Transcripts are routed through the shared reminder intake path. Confident parses create reminders directly; uncertain parses create confirmation drafts.
 - Voice-created reminders and confirmed voice drafts use `ReminderSourceType.VOICE`.
 - Voice metadata is stored in JSON metadata/payload without raw audio or duplicate transcript text: language, duration, model, Telegram `file_unique_id`, and MIME type.
 - Voice messages do not satisfy pending `Choose time` edit drafts; the bot asks the user to send the new time as text or press `Cancel`.
+- Auto-repeat cleanup now uses the previous successful `reminder_attempts.telegram_message_id`: after sending a timeout repeat for a reminder that was already `sent`, the worker deletes the previous fired message, or removes its inline keyboard if deletion fails.
 - Service result outcomes and parser intents now use `StrEnum` vocabulary instead of ad hoc `Literal` string outcomes.
 
 Important implementation files touched:

@@ -20,7 +20,7 @@ The main user flow is:
 4. If parsing is uncertain, bot asks for a compact confirmation.
 5. When due time arrives, bot sends the reminder with `Read`, `Repeat`, and `Choose time` actions.
 6. `Read` completes the reminder, `Repeat` snoozes it by the configured interval, and `Choose time` asks for a new time in text with a `Cancel` button.
-7. If the user does not press any button, the worker automatically sends the reminder again after the configured repeat interval.
+7. If the user does not press any button, the worker automatically sends the reminder again after the configured repeat interval and tries to remove the previous fired message to avoid notification spam.
 
 ## Selected Stack
 
@@ -63,8 +63,10 @@ Install dependencies and apply migrations:
     uv sync
     uv run alembic upgrade head
 
-Voice reminders use local `faster-whisper` transcription. The default model is `small` with `int8`
-CPU inference; the first voice transcription may download model files into the local model cache.
+Voice reminders use local `faster-whisper` transcription. The default model is `base` with `int8`
+CPU inference, fast single-beam decoding, VAD filtering, and a 15-second voice duration limit for
+MVP responsiveness. The bot warms the model at startup when possible; the first run may still
+download model files into the local model cache.
 
 The same commands are available through `make`:
 

@@ -121,6 +121,59 @@ async def deliver_reminder(
             now=datetime.now(UTC),
         )
 
+    await delete_previous_auto_repeat_message(
+        bot=bot,
+        logger=logger,
+        reminder=reminder,
+        new_message_id=message.message_id,
+    )
+
+
+async def delete_previous_auto_repeat_message(
+    *,
+    bot: Bot,
+    logger: logging.Logger,
+    reminder: ReminderToSend,
+    new_message_id: int,
+) -> None:
+    previous_message_id = reminder.previous_telegram_message_id
+    if (
+        not reminder.is_auto_repeat
+        or previous_message_id is None
+        or previous_message_id == new_message_id
+    ):
+        return
+
+    try:
+        await bot.delete_message(
+            chat_id=reminder.telegram_user_id,
+            message_id=previous_message_id,
+        )
+        return
+    except AiogramError:
+        logger.warning(
+            "worker: previous reminder message delete failed",
+            extra={
+                "reminder_id": reminder.reminder_id,
+                "telegram_message_id": previous_message_id,
+            },
+        )
+
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=reminder.telegram_user_id,
+            message_id=previous_message_id,
+            reply_markup=None,
+        )
+    except AiogramError:
+        logger.warning(
+            "worker: previous reminder message keyboard cleanup failed",
+            extra={
+                "reminder_id": reminder.reminder_id,
+                "telegram_message_id": previous_message_id,
+            },
+        )
+
 
 def main() -> None:
     asyncio.run(run_worker())

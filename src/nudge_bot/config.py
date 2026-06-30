@@ -9,6 +9,7 @@ from nudge_bot.constants import (
     DEFAULT_REPEAT_INTERVAL_MINUTES,
     DEFAULT_TIMEZONE,
     SCHEDULER_POLL_INTERVAL_SECONDS,
+    VOICE_MAX_DURATION_SECONDS,
     VOICE_MAX_FILE_SIZE_MB,
     VOICE_TRANSCRIPTION_COMPUTE_TYPE,
     VOICE_TRANSCRIPTION_DEVICE,
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
     voice_max_file_size_mb: PositiveInt = Field(
         default=VOICE_MAX_FILE_SIZE_MB,
         alias="VOICE_MAX_FILE_SIZE_MB",
+    )
+    voice_max_duration_seconds: PositiveInt = Field(
+        default=VOICE_MAX_DURATION_SECONDS,
+        alias="VOICE_MAX_DURATION_SECONDS",
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
