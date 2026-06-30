@@ -89,11 +89,12 @@ async def deliver_reminder(
     try:
         message = await bot.send_message(
             chat_id=reminder.telegram_user_id,
-            text=f"🔔 Reminder\n\n{reminder.reminder_text}",
+            text=f"⏰ <i>Reminder</i>\n\n📨 {reminder.reminder_text}",
             reply_markup=reminder_actions_keyboard(
                 reminder_id=reminder.reminder_id,
                 notification_id=attempt.id,
             ),
+            parse_mode="HTML",
         )
     except AiogramError as exc:
         logger.warning(
