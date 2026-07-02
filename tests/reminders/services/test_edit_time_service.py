@@ -19,6 +19,7 @@ from nudge_bot.reminders.enums import (
     ReminderStatus,
 )
 from nudge_bot.reminders.services import ReminderEditTimeService
+from nudge_bot.reminders.services.schemas import EditTimeOutcome
 from nudge_bot.storage.models import Draft
 
 from .fakes import (
@@ -61,7 +62,7 @@ async def test_choose_time_creates_pending_edit_time_draft() -> None:
         now=NOW,
     )
 
-    assert result.outcome == "awaiting_input"
+    assert result.outcome == EditTimeOutcome.AWAITING_INPUT
     assert result.changed is True
     assert len(drafts.added) == 1
     draft = drafts.added[0]
@@ -107,7 +108,7 @@ async def test_repeated_choose_time_reuses_pending_draft() -> None:
         now=NOW,
     )
 
-    assert result.outcome == "awaiting_input"
+    assert result.outcome == EditTimeOutcome.AWAITING_INPUT
     assert result.changed is False
     assert drafts.added == []
 
@@ -136,7 +137,7 @@ async def test_choose_time_replaces_pending_draft_for_other_reminder() -> None:
         now=NOW,
     )
 
-    assert result.outcome == "awaiting_input"
+    assert result.outcome == EditTimeOutcome.AWAITING_INPUT
     assert result.changed is True
     assert previous_draft.status == DraftStatus.CANCELLED
     assert len(drafts.added) == 1
@@ -165,7 +166,7 @@ async def test_choose_time_does_not_change_completed_reminder() -> None:
         now=NOW,
     )
 
-    assert result.outcome == "already_handled"
+    assert result.outcome == EditTimeOutcome.ALREADY_HANDLED
     assert result.changed is False
     assert drafts.added == []
     assert reminder.status == ReminderStatus.COMPLETED
@@ -193,7 +194,7 @@ async def test_edit_time_text_reschedules_reminder_and_confirms_draft() -> None:
         settings=Settings(),
     )
 
-    assert result.outcome == "rescheduled"
+    assert result.outcome == EditTimeOutcome.RESCHEDULED
     assert result.changed is True
     assert reminder.status == ReminderStatus.SNOOZED
     assert reminder.due_at == NOW + timedelta(minutes=20)
@@ -224,7 +225,7 @@ async def test_edit_time_text_does_not_resurrect_completed_reminder() -> None:
         settings=Settings(),
     )
 
-    assert result.outcome == "already_handled"
+    assert result.outcome == EditTimeOutcome.ALREADY_HANDLED
     assert result.changed is True
     assert reminder.status == ReminderStatus.COMPLETED
     assert reminder.due_at == NOW
@@ -253,7 +254,7 @@ async def test_edit_time_text_does_not_clobber_sending_reminder() -> None:
         settings=Settings(),
     )
 
-    assert result.outcome == "already_handled"
+    assert result.outcome == EditTimeOutcome.ALREADY_HANDLED
     assert reminder.status == ReminderStatus.SENDING
     assert reminder.locked_at == NOW
     assert draft.status == DraftStatus.CANCELLED
@@ -282,7 +283,7 @@ async def test_unknown_edit_time_text_keeps_draft_pending() -> None:
         settings=Settings(),
     )
 
-    assert result.outcome == "unknown"
+    assert result.outcome == EditTimeOutcome.UNKNOWN
     assert reminder.due_at == NOW
     assert draft.status == DraftStatus.PENDING
     assert draft.input_text == "когда-нибудь потом"
@@ -311,7 +312,7 @@ async def test_expired_edit_time_draft_does_not_change_reminder() -> None:
         settings=Settings(),
     )
 
-    assert result.outcome == "expired"
+    assert result.outcome == EditTimeOutcome.EXPIRED
     assert reminder.due_at == NOW
     assert draft.status == DraftStatus.EXPIRED
 

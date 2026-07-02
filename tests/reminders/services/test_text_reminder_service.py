@@ -14,6 +14,7 @@ from nudge_bot.reminders.services.intake import (
     SOURCE_TYPE_PAYLOAD_KEY,
     TIMEZONE_PAYLOAD_KEY,
 )
+from nudge_bot.reminders.services.schemas import TextReminderOutcome
 
 from .fakes import (
     FakeDraftRepository,
@@ -47,7 +48,7 @@ async def test_handle_text_reminder_creates_active_reminder_for_confident_parse(
         settings=SETTINGS,
     )
 
-    assert result.outcome == "created"
+    assert result.outcome == TextReminderOutcome.CREATED
     assert result.reminder is reminders.added[0]
     assert result.reminder.reminder_text == "walk the dog"
     assert result.reminder.status == ReminderStatus.ACTIVE
@@ -80,7 +81,7 @@ async def test_handle_text_reminder_creates_pending_draft_for_uncertain_parse() 
         settings=SETTINGS,
     )
 
-    assert result.outcome == "draft"
+    assert result.outcome == TextReminderOutcome.DRAFT
     assert result.reminder is None
     assert result.draft is drafts.added[0]
     assert result.draft.type == DraftType.REMINDER_CONFIRMATION
@@ -121,7 +122,7 @@ async def test_handle_text_reminder_falls_back_when_user_timezone_is_invalid() -
         settings=SETTINGS,
     )
 
-    assert result.outcome == "created"
+    assert result.outcome == TextReminderOutcome.CREATED
     assert result.display_timezone == SETTINGS.default_timezone
     assert reminders.added[0].due_at.tzinfo == UTC
 
@@ -142,7 +143,7 @@ async def test_handle_text_reminder_unknown_text_creates_nothing() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == "unknown"
+    assert result.outcome == TextReminderOutcome.UNKNOWN
     assert result.reminder is None
     assert result.draft is None
     assert reminders.added == []
@@ -165,7 +166,7 @@ async def test_handle_text_reminder_note_marker_creates_nothing() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == "note"
+    assert result.outcome == TextReminderOutcome.NOTE
     assert result.reminder is None
     assert result.draft is None
     assert reminders.added == []

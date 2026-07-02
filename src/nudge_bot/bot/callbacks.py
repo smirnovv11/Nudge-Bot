@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from aiogram.filters.callback_data import CallbackData
+
+from nudge_bot.reminders.enums import CallbackAction
 
 
 class ReminderActionCallback(CallbackData, prefix="rem"):
-    action: Literal["read", "repeat", "choose_time"]
+    action: CallbackAction
     reminder_id: int
     notification_id: int | None = None
 
 
 class ReminderDraftCallback(CallbackData, prefix="draft"):
-    action: Literal["confirm", "edit_time", "edit_text", "cancel"]
+    action: CallbackAction
     draft_id: int

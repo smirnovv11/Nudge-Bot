@@ -243,7 +243,11 @@ async def handle_voice_message(
     )
 
 
-@router.callback_query(ReminderDraftCallback.filter(F.action.in_({"confirm", "cancel"})))
+@router.callback_query(
+    ReminderDraftCallback.filter(
+        F.action.in_({CallbackAction.CONFIRM.value, CallbackAction.CANCEL.value})
+    )
+)
 async def handle_draft_callback(
     callback: CallbackQuery,
     callback_data: ReminderDraftCallback,
@@ -256,7 +260,7 @@ async def handle_draft_callback(
         user = await uow.users.get_by_telegram_id(callback.from_user.id)
         if user is None:
             unavailable_message = "🙈 I could not find your reminder draft"
-        elif callback_data.action == "confirm":
+        elif callback_data.action == CallbackAction.CONFIRM:
             try:
                 result = await draft_flow_service.confirm_draft(
                     uow,
@@ -283,7 +287,10 @@ async def handle_draft_callback(
 
     await callback.answer()
     if result is not None and isinstance(callback.message, Message):
-        if callback_data.action == "cancel" and result.draft.type == DraftType.REMINDER_EDIT_TIME:
+        if (
+            callback_data.action == CallbackAction.CANCEL
+            and result.draft.type == DraftType.REMINDER_EDIT_TIME
+        ):
             try:
                 await callback.message.delete()
             except TelegramBadRequest:
@@ -294,7 +301,15 @@ async def handle_draft_callback(
 
 
 @router.callback_query(
-    ReminderActionCallback.filter(F.action.in_({"read", "repeat", "choose_time"}))
+    ReminderActionCallback.filter(
+        F.action.in_(
+            {
+                CallbackAction.READ.value,
+                CallbackAction.REPEAT.value,
+                CallbackAction.CHOOSE_TIME.value,
+            }
+        )
+    )
 )
 async def handle_reminder_action_callback(
     callback: CallbackQuery,
@@ -313,7 +328,7 @@ async def handle_reminder_action_callback(
             user = await uow.users.get_by_telegram_id(callback.from_user.id)
             if user is None:
                 unavailable_message = "🙈 I could not find this reminder"
-            elif callback_data.action == "choose_time":
+            elif callback_data.action == CallbackAction.CHOOSE_TIME:
                 display_timezone = (
                     user.settings.timezone
                     if user.settings is not None
@@ -333,7 +348,7 @@ async def handle_reminder_action_callback(
                 result = await reminder_action_service.process_callback_action(
                     uow,
                     callback_key=callback_key,
-                    action=CallbackAction(callback_data.action),
+                    action=callback_data.action,
                     reminder_id=callback_data.reminder_id,
                     user_id=user.id,
                     interval_minutes=user.settings.repeat_interval_minutes,
