@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from nudge_bot.common.constants import DEFAULT_REPEAT_INTERVAL_MINUTES, DEFAULT_TIMEZONE
+from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES, DEFAULT_TIMEZONE
 from nudge_bot.reminders.enums import (
     CallbackAction,
     CallbackEventStatus,
@@ -104,7 +104,9 @@ class Reminder(TimestampMixin, Base):
             "reminders_due_deliverable_idx",
             "due_at",
             "id",
-            postgresql_where=text("archived_at IS NULL AND status IN ('active', 'snoozed')"),
+            postgresql_where=text(
+                "archived_at IS NULL AND status IN ('active', 'snoozed', 'sent')"
+            ),
         ),
         Index(
             "reminders_sending_locked_idx",
@@ -210,6 +212,12 @@ class Draft(TimestampMixin, Base):
             "drafts_expiration_idx",
             "expires_at",
             postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "drafts_user_pending_edit_time_uidx",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND type = 'reminder_edit_time'"),
         ),
     )
 

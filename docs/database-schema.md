@@ -172,9 +172,11 @@ Use PostgreSQL enum types for bounded state and category fields instead of free 
 
 The worker finds due reminders with a query shaped like:
 
-    status IN ('active', 'snoozed')
+    status IN ('active', 'snoozed', 'sent')
     AND due_at <= now()
     AND archived_at IS NULL
+
+For auto-repeat, `sent` reminders use `due_at` as the next unattended repeat time. When a notification is delivered successfully, the worker leaves the reminder in `sent` and moves `due_at` forward by `user_settings.repeat_interval_minutes`. If the reminder was already `sent` before this delivery, the worker uses the previous successful `reminder_attempts.telegram_message_id` to delete the older fired Telegram message after the new one is accepted. If Telegram refuses deletion, the worker removes the old inline keyboard when possible. If the user presses `Read`, the reminder becomes `completed` and stops being claimable.
 
 The worker should claim rows atomically before sending. In PostgreSQL, the implementation can use a transaction with row locking such as `FOR UPDATE SKIP LOCKED`, or a single conditional update that sets `status = sending` and `locked_at = now()`.
 
@@ -216,14 +218,14 @@ Use a partial btree index for reminders the worker can deliver:
     CREATE INDEX reminders_due_deliverable_idx
     ON reminders (due_at, id)
     WHERE archived_at IS NULL
-      AND status IN ('active', 'snoozed');
+      AND status IN ('active', 'snoozed', 'sent');
 
 Purpose: the scheduler worker repeatedly asks, "which reminders are due now?" This is the hottest MVP query:
 
     SELECT *
     FROM reminders
     WHERE archived_at IS NULL
-      AND status IN ('active', 'snoozed')
+      AND status IN ('active', 'snoozed', 'sent')
       AND due_at <= now()
     ORDER BY due_at, id
     LIMIT 100;
@@ -315,6 +317,15 @@ Use a partial btree index for draft expiration cleanup:
 
 Purpose: a cleanup job can mark old pending drafts as expired without scanning the whole table.
 
+Use a partial unique btree index for active `Choose time` edit sessions:
+
+    CREATE UNIQUE INDEX drafts_user_pending_edit_time_uidx
+    ON drafts (user_id)
+    WHERE status = 'pending'
+      AND type = 'reminder_edit_time';
+
+Purpose: a user should not have multiple pending edit-time sessions competing for the next text message. Repeated `Choose time` taps should reuse the existing pending draft instead of creating duplicate durable edit state.
+
 ### Callback Events
 
 Use a unique btree index on `callback_events.callback_key`:
@@ -346,9 +357,11 @@ Do not add a GIN index on `reminders.metadata` yet. JSONB metadata is for future
 
 Do not add an index on `users.username` yet. Telegram usernames can change and the bot's primary lookup is `telegram_user_id`.
 
-## Future Extensions
+## Current Voice Metadata
 
-Voice creation can use `source_type = voice` and store transcript metadata in `reminders.metadata` or `drafts.payload`.
+Voice creation uses `source_type = voice` and stores minimal transcript metadata in `reminders.metadata` or `drafts.payload`: transcription language, model, duration, Telegram `file_unique_id`, and MIME type. Do not store raw audio or duplicate transcript text in metadata.
+
+## Future Extensions
 
 Idea inbox should use a future separate `notes` or `inbox_items` table. MVP should not overload `reminders` with note rows.
 

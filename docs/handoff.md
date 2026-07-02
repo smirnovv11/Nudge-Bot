@@ -18,13 +18,12 @@ MVP buttons on a fired reminder:
 
 - `Read`: mark the reminder completed/read, stop active repeats, keep history.
 - `Repeat`: repeat after the user's configured short-repeat interval.
-- `Choose time`: let the user choose a specific next reminder time.
+- `Choose time`: currently returns an MVP placeholder; the edit-time state machine is still deferred.
 
-If the user does not press any button, the bot should auto-repeat after the configured interval. Default repeat interval is 5 minutes.
+If the user does not press any button, the worker auto-repeats after the configured interval. Default repeat interval is 5 minutes. After a successful timeout repeat, the worker tries to delete the previous fired reminder message so unread repeats do not flood the chat; if Telegram refuses deletion, it falls back to removing the old message keyboard.
 
 ## MVP Non-Goals
 
-- No voice creation in the first version.
 - No recurring reminders in the first version.
 - No full idea inbox in the first version.
 - No payments or subscriptions.
@@ -65,9 +64,9 @@ Internal flow:
 
 Keep Telegram handlers thin. Business rules should live in services/domain modules and be testable without Telegram.
 
-Use `reminders.intake` for input-source strategies. Text input is the first strategy. Future voice
-input should be a second strategy that transcribes audio and then reuses the same parser and reminder
-service path.
+Use `reminders.intake` for input-source strategies. Text and voice input share the same parser and
+reminder service path. Voice input transcribes Telegram voice/audio locally with `faster-whisper`,
+then feeds the transcript into the shared intake flow.
 
 Use repository classes through `storage.unit_of_work.UnitOfWork` instead of passing raw
 `AsyncSession` into application services. The top-level bot update or worker job should own the Unit
@@ -117,19 +116,82 @@ Webhooks are reserved for later production deployment. A webhook means Telegram 
 
 Use aiogram CallbackData factories for inline button payloads instead of hand-built strings.
 
-Button actions must be idempotent. Repeated presses of `Read`, `Repeat`, or `Choose time` should not corrupt state or create duplicate repeats.
+Button actions must be idempotent. Repeated presses of `Read` or `Repeat` should not corrupt state or create duplicate repeats. Fired-reminder callbacks use a stable key shaped around reminder id, notification attempt id, and action.
 
 Use `callback_events.callback_key` as a unique logical action key. This supports idempotency and future per-user button rate limiting.
+
+## Current Session Handoff
+
+This session implemented, reviewed, and lightly stabilized the text-based `Choose time` edit flow, then added local voice/audio reminder creation.
+
+What changed:
+
+- `Choose time` is no longer a placeholder. Pressing it sends a normal chat message asking for a new time, with a `Cancel` button.
+- The edit state is durable: `ReminderEditTimeService` creates or reuses a pending `DraftType.REMINDER_EDIT_TIME` draft.
+- The next user text message is parsed through the existing `parse_reminder_text` path, but only `due_at` is applied. `reminder_text` stays unchanged.
+- Successful edit-time application moves the same reminder to `snoozed` at the chosen UTC due time.
+- Cancelling closes the edit-time draft and deletes only the prompt message, leaving the original fired reminder message intact.
+- While a non-expired edit-time draft is pending, due claiming suppresses that reminder so auto-repeat does not fire over the user's custom-time flow.
+- The edit-time draft payload contract is centralized in `src/nudge_bot/reminders/draft_payloads.py`.
+- A partial unique index now enforces one pending edit-time draft per user: `alembic/versions/20260628_2045_add_pending_edit_time_draft_unique_index.py`.
+- The migration defensively cancels older duplicate pending edit-time drafts before creating that unique index.
+- `README.md`, `docs/database-schema.md`, and the living ExecPlan were updated to reflect the implemented flow.
+
+Review fixes applied:
+
+- Reminder rows are locked before edit-time application so stale or terminal reminders are not rewritten.
+- Starting `Choose time` serializes by locking the user row before checking or creating the pending edit-time draft.
+- Repeated taps on the same `Choose time` callback do not create duplicate drafts and do not spam duplicate prompt messages.
+- Completed or archived reminders are handled gracefully and do not create edit-time drafts.
+- The due-claim suppression uses the typed edit-time draft payload helper instead of open-coded JSON key strings.
+
+Validation from this session:
+
+- `pytest tests/reminders/services/test_edit_time_service.py`: 9 passed.
+- `.venv\Scripts\python.exe -m pytest`: 80 passed.
+- `ruff check .`: passed.
+- `ruff format --check .`: passed.
+- `uv run pytest`: blocked in this sandbox because `faster-whisper` requires a PyPI fetch and network access was denied.
+- Test runs still show a pytest cache warning in this Codex Windows sandbox because `.pytest_cache` cannot be written; it does not indicate a test failure.
+
+Lightweight stabilization added:
+
+- `tests/reminders/services/test_edit_time_service.py::test_choose_time_replaces_pending_draft_for_other_reminder` now covers the case where a user starts `Choose time` for another reminder while an older edit-time draft is pending. The old draft is cancelled and the new draft owns the next text message.
+
+Voice input added:
+
+- Telegram `voice` and `audio` messages are accepted by the reminders router.
+- Voice/audio is downloaded through aiogram, rejected before download when Telegram reports a file larger than `VOICE_MAX_FILE_SIZE_MB` or longer than `VOICE_MAX_DURATION_SECONDS`, then transcribed locally with `faster-whisper`.
+- The default transcription configuration is `base` model, `int8` compute, `cpu` device, and `ru` language.
+- Voice transcription is warmed at bot startup when possible and uses fast single-beam decoding, no timestamps, no previous-text conditioning, and VAD filtering.
+- The bot immediately sends `Transcribing...` for accepted voice/audio messages, then edits that message with the final reminder result.
+- Transcripts are routed through the shared reminder intake path. Confident parses create reminders directly; uncertain parses create confirmation drafts.
+- Voice-created reminders and confirmed voice drafts use `ReminderSourceType.VOICE`.
+- Voice metadata is stored in JSON metadata/payload without raw audio or duplicate transcript text: language, duration, model, Telegram `file_unique_id`, and MIME type.
+- Voice messages do not satisfy pending `Choose time` edit drafts; the bot asks the user to send the new time as text or press `Cancel`.
+- Auto-repeat cleanup now uses the previous successful `reminder_attempts.telegram_message_id`: after sending a timeout repeat for a reminder that was already `sent`, the worker deletes the previous fired message, or removes its inline keyboard if deletion fails.
+- Service result outcomes and parser intents now use `StrEnum` vocabulary instead of ad hoc `Literal` string outcomes.
+
+Important implementation files touched:
+
+- `src/nudge_bot/storage/repositories/reminders.py`
+- `src/nudge_bot/storage/repositories/drafts.py`
+- `src/nudge_bot/storage/repositories/users.py`
+- `src/nudge_bot/reminders/services/edit_time.py`
+- `src/nudge_bot/reminders/draft_payloads.py`
+- `src/nudge_bot/bot/routers/reminders.py`
+- `src/nudge_bot/bot/keyboards.py`
+- `src/nudge_bot/reminders/services/intake.py`
+- `src/nudge_bot/reminders/services/voice.py`
+- `alembic/versions/20260628_2045_add_pending_edit_time_draft_unique_index.py`
+- `tests/reminders/services/test_edit_time_service.py`
+- `tests/bot/test_reminders.py`
+- `tests/storage/test_reminder_repository.py`
+- `tests/storage/test_draft_repository.py`
+- `tests/reminders/services/test_voice_service.py`
 
 ## Next Implementation Step
 
 Start from `.agent/execplans/tg-reminder-bot-mvp.md`.
 
-First implementation milestone:
-
-1. Scaffold `pyproject.toml`, `src/nudge_bot`, `tests`, Ruff, and uv commands.
-2. Add `docker-compose.yml` for PostgreSQL infrastructure, then run `bot` and `worker` locally with uv.
-3. Add pydantic settings.
-4. Add SQLAlchemy models and Alembic migration matching `docs/database-schema.md`.
-5. Add initial parser tests before relying on Telegram manual testing.
-6. Continue from repository/Unit of Work boundaries when wiring bot handlers and worker jobs.
+Concrete next step: update `uv.lock` and run `uv sync` when network access is available, then run a real local Telegram smoke test with a short Russian voice reminder after `faster-whisper` downloads the local model. Keep PostgreSQL race/multi-worker integration coverage deferred unless the plan is explicitly reopened for hardening.

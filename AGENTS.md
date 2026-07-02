@@ -13,6 +13,7 @@ The selected MVP stack for this repository is:
 - Migrations: Alembic
 - Configuration: pydantic-settings with `.env`
 - Human date parsing: dateparser plus a project-owned confidence layer
+- Voice transcription: faster-whisper local transcription
 - Scheduling: custom DB-backed polling worker
 - Tests: pytest and pytest-asyncio
 - Quality tools: Ruff for linting and formatting
@@ -38,3 +39,9 @@ Use aiogram CallbackData factories for inline button payloads instead of hand-bu
 Treat Telegram delivery retry and user reminder repeat as separate concepts. A failed Telegram API send should be retried as delivery. A delivered notification with no user action should create the next reminder fire time.
 
 Avoid logging full reminder text unless explicitly needed for local debugging. Prefer ids, statuses, timestamps, and short structured events.
+
+Avoid magic numbers and duplicated default values. Shared product and runtime defaults, such as repeat intervals, scheduler polling intervals, draft expiration windows, and default timezone, belong in the dedicated constants package under `src/nudge_bot/constants/` and should be imported by application code and tests.
+
+Avoid magic string values for bounded domain or service states. If a value can be an enum, define and reuse an explicit enum-like type, preferably `StrEnum`, or another typed vocabulary such as a small dataclass-backed result contract when that better fits the code. Outcomes, statuses, actions, draft types, source types, and parser intents should not be checked through ad hoc strings such as `if result.outcome == "note"`.
+
+Separate logical blocks of code with a blank line for readability.

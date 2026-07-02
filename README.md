@@ -10,16 +10,17 @@ For continuing this work in another chat, start from `docs/handoff.md`.
 
 ## MVP Scope
 
-The first version focuses on text-based one-off reminders. Voice creation, recurring reminders, a full idea inbox, payments, ads, and a web admin panel are intentionally deferred.
+The first version focuses on one-off reminders created from text or Telegram voice/audio. Recurring reminders, a full idea inbox, payments, ads, and a web admin panel are intentionally deferred.
 
 The main user flow is:
 
-1. User sends plain text to the bot.
-2. Bot parses reminder text and date/time.
+1. User sends plain text or a Telegram voice/audio message to the bot.
+2. Bot transcribes voice locally when needed, then parses reminder text and date/time.
 3. If parsing is confident, bot creates the reminder immediately.
 4. If parsing is uncertain, bot asks for a compact confirmation.
 5. When due time arrives, bot sends the reminder with `Read`, `Repeat`, and `Choose time` actions.
-6. If the user does nothing, the reminder repeats after the configured interval.
+6. `Read` completes the reminder, `Repeat` snoozes it by the configured interval, and `Choose time` asks for a new time in text with a `Cancel` button.
+7. If the user does not press any button, the worker automatically sends the reminder again after the configured repeat interval and tries to remove the previous fired message to avoid notification spam.
 
 ## Selected Stack
 
@@ -31,6 +32,7 @@ The main user flow is:
 - Alembic
 - pydantic-settings
 - dateparser plus project confidence rules
+- faster-whisper for local voice transcription
 - custom DB-backed polling worker
 - pytest and pytest-asyncio
 - Ruff
@@ -60,6 +62,11 @@ Install dependencies and apply migrations:
 
     uv sync
     uv run alembic upgrade head
+
+Voice reminders use local `faster-whisper` transcription. The default model is `base` with `int8`
+CPU inference, fast single-beam decoding, VAD filtering, and a 15-second voice duration limit for
+MVP responsiveness. The bot warms the model at startup when possible; the first run may still
+download model files into the local model cache.
 
 The same commands are available through `make`:
 
@@ -92,8 +99,8 @@ The `bot` process receives Telegram updates through long polling. It is the part
 the user: `/start`, text messages, and inline button clicks.
 
 The `worker` process is the scheduler. It periodically checks PostgreSQL for due reminders and
-sends reminder notifications. Keeping it separate makes reminder delivery independent from
-Telegram message intake and lets both loops stay simple.
+sends reminder notifications with `Read`, `Repeat`, and `Choose time` buttons. Keeping it separate
+makes reminder delivery independent from Telegram message intake and lets both loops stay simple.
 
 For code checks, run:
 
@@ -124,9 +131,9 @@ The internal flow should be:
 
 Telegram-specific code should stay near the adapter layer. Reminder behavior should be testable without calling Telegram.
 
-Reminder input handling is split from reminder parsing. Text input currently uses a small strategy
-object that calls the parser directly. Future voice input should become a separate strategy that
-transcribes audio first, then feeds the transcript into the same reminder parser and service flow.
+Reminder input handling is split from reminder parsing. Text input and voice input both feed the
+same parser and reminder service flow. Voice input transcribes audio locally first, then stores only
+minimal transcript metadata such as model, language, duration, and Telegram file id.
 
 Storage access is grouped behind repository classes and a Unit of Work. A Unit of Work owns one
 database session and exposes repositories such as `users` and `reminders` for one bot update or one

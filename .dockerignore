@@ -1,0 +1,17 @@
+.agent/
+.agents/
+.codex/
+.git/
+.github/
+.idea/
+.omx/
+.pre-commit-cache/
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+docs/
+tests/
