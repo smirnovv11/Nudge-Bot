@@ -30,7 +30,7 @@ Telegram token while the MVP uses long polling.
 
    ```env
    BOT_TOKEN=123456:telegram-token-from-botfather
-   DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
+   DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database?sslmode=require
    DEFAULT_TIMEZONE=Europe/Minsk
    DEFAULT_REPEAT_INTERVAL_MINUTES=5
    SCHEDULER_POLL_INTERVAL_SECONDS=10
@@ -42,6 +42,9 @@ Telegram token while the MVP uses long polling.
    VOICE_MAX_FILE_SIZE_MB=20
    VOICE_MAX_DURATION_SECONDS=15
    ```
+
+   Northflank can provide a PostgreSQL URL with `sslmode=require`. Keep that query parameter if it
+   appears; the application translates it to the `asyncpg` SSL option at startup.
 
 7. Add this only to the `nudge-bot` service:
 
