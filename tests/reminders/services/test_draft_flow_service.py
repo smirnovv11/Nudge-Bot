@@ -108,6 +108,32 @@ async def test_confirm_draft_marks_expired_draft_without_creating_reminder() -> 
 
 
 @pytest.mark.asyncio
+async def test_confirm_draft_marks_past_due_candidate_expired() -> None:
+    draft = Draft(
+        id=1,
+        user_id=10,
+        type=DraftType.REMINDER_CONFIRMATION,
+        status=DraftStatus.PENDING,
+        input_text="pick up order tomorrow",
+        parsed_text="pick up order",
+        parsed_due_at=NOW.astimezone(UTC) - timedelta(seconds=1),
+        parse_confidence=0.6,
+        payload={"timezone": "Europe/Minsk"},
+        expires_at=NOW.astimezone(UTC) + timedelta(hours=1),
+    )
+    reminders = FakeReminderRepository()
+    uow = FakeUnitOfWork(reminders, drafts=FakeDraftRepository(draft))
+
+    result = await DraftFlowService().confirm_draft(uow, draft_id=1, user_id=10, now=NOW)
+
+    assert result.outcome == "expired"
+    assert result.changed is True
+    assert result.display_timezone == "Europe/Minsk"
+    assert draft.status == DraftStatus.EXPIRED
+    assert reminders.added == []
+
+
+@pytest.mark.asyncio
 async def test_cancel_draft_marks_cancelled_once() -> None:
     draft = Draft(
         id=1,

@@ -40,6 +40,17 @@ class DraftFlowService:
             raise ValueError("draft cannot be confirmed without parsed reminder fields")
 
         display_timezone = draft_display_timezone(draft)
+        if to_utc(draft.parsed_due_at) <= now_utc:
+            draft.status = DraftStatus.EXPIRED
+            draft.updated_at = now_utc
+            await uow.session.flush()
+            return DraftActionResult(
+                outcome=DraftActionOutcome.EXPIRED,
+                draft=draft,
+                changed=True,
+                display_timezone=display_timezone,
+            )
+
         source_type = _draft_source_type(draft)
         source_metadata = _draft_source_metadata(draft)
         reminder = Reminder(
