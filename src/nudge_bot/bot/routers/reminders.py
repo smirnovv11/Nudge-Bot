@@ -100,7 +100,7 @@ async def handle_text_message(
             result = None
 
     if edit_time_result.outcome != EditTimeOutcome.NO_PENDING_DRAFT:
-        await message.answer(format_edit_time_result(edit_time_result))
+        await message.answer(format_edit_time_result(edit_time_result), parse_mode="HTML")
         return
 
     if result.outcome == TextReminderOutcome.DRAFT and result.draft is not None:
@@ -362,6 +362,7 @@ async def handle_reminder_action_callback(
             await callback.message.answer(
                 format_edit_time_result(edit_time_result),
                 reply_markup=edit_time_cancel_keyboard(edit_time_result.draft.id),
+                parse_mode="HTML",
             )
             return
 
@@ -452,7 +453,12 @@ def format_reminder_action_result(
 
 def format_edit_time_result(result: EditTimeResult) -> str:
     if result.outcome == EditTimeOutcome.AWAITING_INPUT:
-        return "Отправьте новое время\nНапример: завтра в 9 / через 20 минут"
+        return (
+            "🕒 Отправьте новое время\n"
+            "Send the new time\n\n"
+            "💡 <i>Например: завтра в 9 / через 20 минут</i>\n"
+            "💡 <i>For example: tomorrow at 9 / in 20 minutes</i>"
+        )
 
     if result.outcome == EditTimeOutcome.RESCHEDULED and result.reminder is not None:
         return (

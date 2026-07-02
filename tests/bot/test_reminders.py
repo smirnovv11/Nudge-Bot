@@ -253,8 +253,10 @@ def test_edit_time_awaiting_input_format_is_user_facing() -> None:
         )
     )
 
-    assert "Отправьте новое время" in message
-    assert "через 20 минут" in message
+    assert "🕒 Отправьте новое время" in message
+    assert "Send the new time" in message
+    assert "💡 <i>Например: завтра в 9 / через 20 минут</i>" in message
+    assert "💡 <i>For example: tomorrow at 9 / in 20 minutes</i>" in message
     assert "payload" not in message
     assert "parse_confidence" not in message
 
