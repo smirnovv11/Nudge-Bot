@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,17 +31,40 @@ class UserRepository:
         timezone: str,
         repeat_interval_minutes: int,
     ) -> User:
-        user = await self.get_by_telegram_id(telegram_user_id)
-        if user is not None:
-            user.username = username
-            user.locale = locale
-            return user
-
-        user = User(telegram_user_id=telegram_user_id, username=username, locale=locale)
-        user.settings = UserSettings(
-            timezone=timezone,
-            repeat_interval_minutes=repeat_interval_minutes,
+        user_id = await self._session.scalar(
+            insert(User)
+            .values(
+                telegram_user_id=telegram_user_id,
+                username=username,
+                locale=locale,
+            )
+            .on_conflict_do_update(
+                index_elements=[User.telegram_user_id],
+                set_={
+                    "username": username,
+                    "locale": locale,
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(User.id)
         )
-        self._session.add(user)
-        await self._session.flush()
+        if user_id is None:
+            raise RuntimeError("user upsert did not return an id")
+
+        await self._session.execute(
+            insert(UserSettings)
+            .values(
+                user_id=user_id,
+                timezone=timezone,
+                repeat_interval_minutes=repeat_interval_minutes,
+            )
+            .on_conflict_do_nothing(index_elements=[UserSettings.user_id])
+        )
+
+        user = await self._session.scalar(
+            select(User).options(selectinload(User.settings)).where(User.id == user_id)
+        )
+        if user is None:
+            raise RuntimeError("user upsert returned an id that could not be loaded")
+
         return user
