@@ -22,6 +22,12 @@ The main user flow is:
 6. `Read` completes the reminder, `Repeat` snoozes it by the configured interval, and `Choose time` asks for a new time in text with a `Cancel` button.
 7. If the user does not press any button, the worker automatically sends the reminder again after the configured repeat interval and tries to remove the previous fired message to avoid notification spam.
 
+The bot also exposes a secondary menu surface, anchored near the Telegram text input as a persistent
+two-column reply-keyboard panel after `/start` or `/menu`. The menu is not required for normal
+reminder creation; it provides quick access to settings, active reminders, task history, completed
+tasks from the last three months, a new-reminder prompt, and help. The settings panel lets a user
+choose a timezone preset and a repeat interval preset.
+
 ## Selected Stack
 
 - Python 3.12+
@@ -96,7 +102,7 @@ To open bot and worker in separate PowerShell windows:
     make run
 
 The `bot` process receives Telegram updates through long polling. It is the part that talks to
-the user: `/start`, text messages, and inline button clicks.
+the user: `/start`, `/menu`, text messages, voice/audio messages, and inline button clicks.
 
 The `worker` process is the scheduler. It periodically checks PostgreSQL for due reminders and
 sends reminder notifications with `Read`, `Repeat`, and `Choose time` buttons. Keeping it separate

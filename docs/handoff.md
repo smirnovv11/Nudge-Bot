@@ -18,7 +18,7 @@ MVP buttons on a fired reminder:
 
 - `Read`: mark the reminder completed/read, stop active repeats, keep history.
 - `Repeat`: repeat after the user's configured short-repeat interval.
-- `Choose time`: currently returns an MVP placeholder; the edit-time state machine is still deferred.
+- `Choose time`: ask for a new time in a normal text message and reschedule the same reminder.
 
 If the user does not press any button, the worker auto-repeats after the configured interval. Default repeat interval is 5 minutes. After a successful timeout repeat, the worker tries to delete the previous fired reminder message so unread repeats do not flood the chat; if Telegram refuses deletion, it falls back to removing the old message keyboard.
 
@@ -120,6 +120,33 @@ Button actions must be idempotent. Repeated presses of `Read` or `Repeat` should
 
 Use `callback_events.callback_key` as a unique logical action key. This supports idempotency and future per-user button rate limiting.
 
+## User Menu v1.0
+
+The bot now has a secondary menu surface. `/start` and `/menu` install a persistent two-column
+reply-keyboard panel near the Telegram text input, similar to Telegram bots that show a bottom menu
+under the composer. It does not replace one-message reminder creation; users can still send text or
+voice directly.
+
+Menu screens:
+
+- `⚙️ Settings`: shows and updates `user_settings.timezone` and `repeat_interval_minutes`.
+- `🌍 Timezone`: preset-only selection for `Europe/Minsk`, `UTC`, `Europe/Warsaw`,
+  `Europe/Moscow`, and `America/New_York`.
+- `🔁 Repeat interval`: preset-only selection for `5`, `10`, `15`, `30`, `60`, and `120` minutes.
+- `📌 Active reminders`: read-only list of up to 10 non-archived reminders in `active`,
+  `snoozed`, or `sent`.
+- `📋 Task history`: read-only list of up to 10 recent non-archived reminders across current and
+  completed statuses.
+- `🗄️ Archive`: read-only list of completed/read reminders from the last 90 days.
+- `✍️ New reminder`: tells the user to send a reminder as text or voice.
+- `ℹ️ Help`: short reminder workflow help.
+
+Inline menu navigation uses `MenuCallback` and `MenuActionEnum` in
+`src/nudge_bot/bot/callbacks.py`. These values are not persisted in `callback_events`; persisted
+callback events remain for reminder and draft lifecycle actions only. Reply-keyboard menu buttons
+send normal text, and `src/nudge_bot/bot/routers/menu.py` handles those labels before the reminders
+text router can parse them as reminders.
+
 ## Current Session Handoff
 
 This session implemented, reviewed, and lightly stabilized the text-based `Choose time` edit flow, then added local voice/audio reminder creation.
@@ -194,7 +221,10 @@ Important implementation files touched:
 
 Start from `.agent/execplans/tg-reminder-bot-mvp.md`.
 
-Concrete next step: update `uv.lock` and run `uv sync` when network access is available, then run a real local Telegram smoke test with a short Russian voice reminder after `faster-whisper` downloads the local model. Keep PostgreSQL race/multi-worker integration coverage deferred unless the plan is explicitly reopened for hardening.
+Concrete next step: run a real local Telegram smoke test that opens `/menu`, changes timezone and
+repeat interval presets, checks active/history/archive screens, then creates and completes a short
+text reminder to verify the archive dashboard. Keep PostgreSQL race/multi-worker integration
+coverage deferred unless the plan is explicitly reopened for hardening.
 
 ## Northflank CI/CD Handoff
 

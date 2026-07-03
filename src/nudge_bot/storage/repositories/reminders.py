@@ -21,6 +21,12 @@ DELIVERABLE_STATUSES = [
     ReminderStatusEnum.SNOOZED,
     ReminderStatusEnum.SENT,
 ]
+HISTORY_STATUSES = [
+    ReminderStatusEnum.ACTIVE,
+    ReminderStatusEnum.SNOOZED,
+    ReminderStatusEnum.SENT,
+    ReminderStatusEnum.COMPLETED,
+]
 
 
 class ReminderRepository:
@@ -131,6 +137,69 @@ class ReminderRepository:
 
     async def get_by_id(self, reminder_id: int) -> Reminder | None:
         return await self._session.get(Reminder, reminder_id)
+
+    async def list_active_for_user(
+        self,
+        *,
+        user_id: int,
+        limit: int,
+        offset: int = 0,
+    ) -> list[Reminder]:
+        rows = await self._session.scalars(
+            select(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.archived_at.is_(None),
+                Reminder.status.in_(DELIVERABLE_STATUSES),
+            )
+            .order_by(Reminder.due_at, Reminder.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(rows)
+
+    async def list_recent_for_user(
+        self,
+        *,
+        user_id: int,
+        limit: int,
+        offset: int = 0,
+    ) -> list[Reminder]:
+        rows = await self._session.scalars(
+            select(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.archived_at.is_(None),
+                Reminder.status.in_(HISTORY_STATUSES),
+            )
+            .order_by(Reminder.created_at.desc(), Reminder.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(rows)
+
+    async def list_completed_since(
+        self,
+        *,
+        user_id: int,
+        since: datetime,
+        limit: int,
+        offset: int = 0,
+    ) -> list[Reminder]:
+        rows = await self._session.scalars(
+            select(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.archived_at.is_(None),
+                Reminder.status == ReminderStatusEnum.COMPLETED,
+                Reminder.completed_at.is_not(None),
+                Reminder.completed_at >= since,
+            )
+            .order_by(Reminder.completed_at.desc(), Reminder.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(rows)
 
     async def mark_delivery_sent(
         self,
