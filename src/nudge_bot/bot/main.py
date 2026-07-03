@@ -5,6 +5,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 
+from nudge_bot.bot.routers.menu import router as menu_router
 from nudge_bot.bot.routers.reminders import router as reminders_router
 from nudge_bot.bot.routers.reminders import warm_up_voice_services
 from nudge_bot.bot.routers.start import router as start_router
@@ -24,6 +25,7 @@ async def run_bot() -> None:
     session_factory = create_session_factory(engine)
     dispatcher = Dispatcher()
     dispatcher.include_router(start_router)
+    dispatcher.include_router(menu_router)
     dispatcher.include_router(reminders_router)
     await warm_up_voice_services(settings)
 
