@@ -195,3 +195,35 @@ Important implementation files touched:
 Start from `.agent/execplans/tg-reminder-bot-mvp.md`.
 
 Concrete next step: update `uv.lock` and run `uv sync` when network access is available, then run a real local Telegram smoke test with a short Russian voice reminder after `faster-whisper` downloads the local model. Keep PostgreSQL race/multi-worker integration coverage deferred unless the plan is explicitly reopened for hardening.
+
+## Northflank CI/CD Handoff
+
+Deployment documentation lives in `docs/deployment-northflank.md`. The repository has a GitHub
+Actions workflow at `.github/workflows/ci-cd.yml` that runs Ruff, format check, tests, and a Docker
+build. On the production branch it pushes `ghcr.io/<github-owner>/nudge-bot:latest` and calls
+Northflank deployment hooks for the two runtime services.
+
+Northflank should run one shared image as two deployment services:
+
+- `nudge-bot`: custom command `nudge-bot`; set `RUN_MIGRATIONS=true`.
+- `nudge-worker`: custom command `nudge-worker`; set `WAIT_FOR_MIGRATIONS=true`.
+
+Both services need `BOT_TOKEN`, `DATABASE_URL`, timezone/repeat defaults, scheduler interval, and
+voice settings. Northflank PostgreSQL may provide `DATABASE_URL` with `?sslmode=require`; the app and
+Alembic path normalize that for `asyncpg`, so the query parameter can stay in the environment value.
+
+GitHub repository secrets, not local `.env` values, must hold the Northflank deploy hook URLs:
+
+- `NORTHFLANK_BOT_DEPLOY_HOOK_URL`
+- `NORTHFLANK_WORKER_DEPLOY_HOOK_URL`
+
+Observed Northflank deployment issues and resolutions:
+
+- If bot logs show `TypeError: connect() got an unexpected keyword argument 'sslmode'`, ensure the
+  Alembic `DATABASE_URL` normalization fix is deployed.
+- If bot exits while downloading `faster-whisper-base` from Hugging Face without a Python traceback,
+  the small Northflank instance is likely terminating the process during voice model load. Use a
+  smaller model or disable voice warm-up for hosted testing so text reminders can start first.
+- If logs show `duplicate key value violates unique constraint "users_telegram_user_id_uidx"`, that
+  indicates a concurrent first-message race in `UserRepository.get_or_create`; the intended fix is a
+  PostgreSQL upsert on `users.telegram_user_id` plus `ON CONFLICT DO NOTHING` for `user_settings`.
