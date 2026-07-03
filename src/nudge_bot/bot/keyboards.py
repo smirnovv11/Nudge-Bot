@@ -14,6 +14,7 @@ from nudge_bot.bot.callbacks import (
     ReminderDraftCallback,
 )
 from nudge_bot.reminders.enums import CallbackActionEnum
+from nudge_bot.storage.models import Reminder
 
 TIMEZONE_PRESETS = (
     "Europe/Minsk",
@@ -24,6 +25,7 @@ TIMEZONE_PRESETS = (
 )
 
 REPEAT_INTERVAL_PRESETS = (5, 10, 15, 30, 60, 120)
+REMINDER_BUTTON_TEXT_LIMIT = 36
 
 MENU_SETTINGS_BUTTON_TEXT = "⚙️ Settings"
 MENU_ACTIVE_BUTTON_TEXT = "📌 Active reminders"
@@ -173,6 +175,27 @@ def back_to_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[_menu_button("⬅️ Back", MenuActionEnum.MAIN)]])
 
 
+def reminder_list_keyboard(
+    *,
+    reminders: list[Reminder],
+    screen: MenuActionEnum,
+    page: int,
+    has_next_page: bool,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            _menu_button(
+                _reminder_button_text(reminder),
+                MenuActionEnum.VIEW_REMINDER,
+                f"{screen.value}|{reminder.id}",
+            )
+        ]
+        for reminder in reminders
+    ]
+    rows.append(_pagination_row(screen=screen, page=page, has_next_page=has_next_page))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def draft_confirmation_keyboard(draft_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -211,6 +234,31 @@ def _selected_label(label: str, current_value: str, value: str | None = None) ->
     if (value or label) == current_value:
         return f"✅ {label}"
     return label
+
+
+def _pagination_row(
+    *,
+    screen: MenuActionEnum,
+    page: int,
+    has_next_page: bool,
+) -> list[InlineKeyboardButton]:
+    buttons = []
+    if page > 0:
+        buttons.append(_menu_button("⬅️ Prev", screen, str(page - 1)))
+
+    buttons.append(_menu_button("🏠 Back", MenuActionEnum.MAIN))
+
+    if has_next_page:
+        buttons.append(_menu_button("➡️ Next", screen, str(page + 1)))
+
+    return buttons
+
+
+def _reminder_button_text(reminder: Reminder) -> str:
+    text = reminder.reminder_text.strip() or "Reminder"
+    if len(text) > REMINDER_BUTTON_TEXT_LIMIT:
+        text = f"{text[: REMINDER_BUTTON_TEXT_LIMIT - 1]}…"
+    return f"🔔 {text}"
 
 
 def edit_time_cancel_keyboard(draft_id: int) -> InlineKeyboardMarkup:

@@ -111,6 +111,7 @@ async def test_list_active_for_user_filters_current_non_archived_statuses() -> N
     await ReminderRepository(session).list_active_for_user(  # type: ignore[arg-type]
         user_id=10,
         limit=10,
+        offset=5,
     )
 
     statement = session.scalars_statements[0]
@@ -125,7 +126,8 @@ async def test_list_active_for_user_filters_current_non_archived_statuses() -> N
         ReminderStatusEnum.SNOOZED,
         ReminderStatusEnum.SENT,
     ]
-    assert params["param_1"] == 10
+    assert 5 in params.values()
+    assert 10 in params.values()
 
 
 @pytest.mark.asyncio
@@ -135,6 +137,7 @@ async def test_list_recent_for_user_is_read_only_history() -> None:
     await ReminderRepository(session).list_recent_for_user(  # type: ignore[arg-type]
         user_id=10,
         limit=10,
+        offset=5,
     )
 
     statement = session.scalars_statements[0]
@@ -149,6 +152,8 @@ async def test_list_recent_for_user_is_read_only_history() -> None:
         ReminderStatusEnum.SENT,
         ReminderStatusEnum.COMPLETED,
     ]
+    assert 5 in params.values()
+    assert 10 in params.values()
 
 
 @pytest.mark.asyncio
@@ -160,6 +165,7 @@ async def test_list_completed_since_filters_archive_lookback() -> None:
         user_id=10,
         since=since,
         limit=10,
+        offset=5,
     )
 
     statement = session.scalars_statements[0]
@@ -170,3 +176,5 @@ async def test_list_completed_since_filters_archive_lookback() -> None:
     assert "completed_at desc" in sql
     assert params["status_1"] == ReminderStatusEnum.COMPLETED
     assert params["completed_at_1"] == since
+    assert 5 in params.values()
+    assert 10 in params.values()

@@ -17,6 +17,7 @@ class MenuActionEnum(StrEnum):
     HISTORY = "history"
     ARCHIVE = "archive"
     ACTIVE = "active"
+    VIEW_REMINDER = "view_reminder"
     NEW_REMINDER = "new_reminder"
     HELP = "help"
 

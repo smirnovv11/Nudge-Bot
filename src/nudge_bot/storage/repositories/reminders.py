@@ -138,7 +138,13 @@ class ReminderRepository:
     async def get_by_id(self, reminder_id: int) -> Reminder | None:
         return await self._session.get(Reminder, reminder_id)
 
-    async def list_active_for_user(self, *, user_id: int, limit: int) -> list[Reminder]:
+    async def list_active_for_user(
+        self,
+        *,
+        user_id: int,
+        limit: int,
+        offset: int = 0,
+    ) -> list[Reminder]:
         rows = await self._session.scalars(
             select(Reminder)
             .where(
@@ -147,11 +153,18 @@ class ReminderRepository:
                 Reminder.status.in_(DELIVERABLE_STATUSES),
             )
             .order_by(Reminder.due_at, Reminder.id)
+            .offset(offset)
             .limit(limit)
         )
         return list(rows)
 
-    async def list_recent_for_user(self, *, user_id: int, limit: int) -> list[Reminder]:
+    async def list_recent_for_user(
+        self,
+        *,
+        user_id: int,
+        limit: int,
+        offset: int = 0,
+    ) -> list[Reminder]:
         rows = await self._session.scalars(
             select(Reminder)
             .where(
@@ -160,6 +173,7 @@ class ReminderRepository:
                 Reminder.status.in_(HISTORY_STATUSES),
             )
             .order_by(Reminder.created_at.desc(), Reminder.id.desc())
+            .offset(offset)
             .limit(limit)
         )
         return list(rows)
@@ -170,6 +184,7 @@ class ReminderRepository:
         user_id: int,
         since: datetime,
         limit: int,
+        offset: int = 0,
     ) -> list[Reminder]:
         rows = await self._session.scalars(
             select(Reminder)
@@ -181,6 +196,7 @@ class ReminderRepository:
                 Reminder.completed_at >= since,
             )
             .order_by(Reminder.completed_at.desc(), Reminder.id.desc())
+            .offset(offset)
             .limit(limit)
         )
         return list(rows)

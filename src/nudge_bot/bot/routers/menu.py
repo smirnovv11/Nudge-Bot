@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from nudge_bot.bot.callbacks import MenuActionEnum, MenuCallback
 from nudge_bot.bot.keyboards import (
+    MENU_ACTIVE_BUTTON_TEXT,
+    MENU_ARCHIVE_BUTTON_TEXT,
+    MENU_HISTORY_BUTTON_TEXT,
     MENU_REPLY_ACTIONS,
     REPEAT_INTERVAL_PRESETS,
     TIMEZONE_PRESETS,
     back_to_menu_keyboard,
     bottom_menu_keyboard,
     main_menu_keyboard,
+    reminder_list_keyboard,
     repeat_interval_menu_keyboard,
     settings_menu_keyboard,
     timezone_menu_keyboard,
@@ -25,7 +29,7 @@ from nudge_bot.storage.models import Reminder, User
 from nudge_bot.storage.unit_of_work import unit_of_work
 
 router = Router(name="menu")
-MENU_LIST_LIMIT = 10
+MENU_PAGE_SIZE = 5
 ARCHIVE_LOOKBACK_DAYS = 90
 
 
@@ -65,6 +69,11 @@ async def handle_reply_menu_button(
         )
 
     await message.answer(text, reply_markup=reply_markup)
+
+
+@router.callback_query(MenuCallback.filter(F.action == MenuActionEnum.VIEW_REMINDER.value))
+async def handle_reminder_button_callback(callback: CallbackQuery) -> None:
+    await callback.answer("Reminder actions are coming later")
 
 
 @router.callback_query(MenuCallback.filter())
@@ -127,46 +136,73 @@ async def build_menu_screen(
         return format_settings_menu(user), settings_menu_keyboard()
 
     if action == MenuActionEnum.ACTIVE:
-        reminders = await uow.reminders.list_active_for_user(user_id=user.id, limit=MENU_LIST_LIMIT)
+        page = _parse_page(value)
+        reminders = await uow.reminders.list_active_for_user(
+            user_id=user.id,
+            limit=MENU_PAGE_SIZE + 1,
+            offset=page * MENU_PAGE_SIZE,
+        )
+        visible_reminders, has_next_page = _page_items(reminders)
         return (
-            format_reminder_list(
-                title="📌 Active reminders",
+            format_reminder_list_screen(
+                title=MENU_ACTIVE_BUTTON_TEXT,
                 empty_text="No active reminders.",
-                reminders=reminders,
-                timezone=user.settings.timezone,
-                time_field="due",
+                reminders=visible_reminders,
+                page=page,
             ),
-            back_to_menu_keyboard(),
+            reminder_list_keyboard(
+                reminders=visible_reminders,
+                screen=MenuActionEnum.ACTIVE,
+                page=page,
+                has_next_page=has_next_page,
+            ),
         )
 
     if action == MenuActionEnum.HISTORY:
-        reminders = await uow.reminders.list_recent_for_user(user_id=user.id, limit=MENU_LIST_LIMIT)
+        page = _parse_page(value)
+        reminders = await uow.reminders.list_recent_for_user(
+            user_id=user.id,
+            limit=MENU_PAGE_SIZE + 1,
+            offset=page * MENU_PAGE_SIZE,
+        )
+        visible_reminders, has_next_page = _page_items(reminders)
         return (
-            format_reminder_list(
-                title="📋 Task history",
+            format_reminder_list_screen(
+                title=MENU_HISTORY_BUTTON_TEXT,
                 empty_text="No reminders yet.",
-                reminders=reminders,
-                timezone=user.settings.timezone,
-                time_field="created",
+                reminders=visible_reminders,
+                page=page,
             ),
-            back_to_menu_keyboard(),
+            reminder_list_keyboard(
+                reminders=visible_reminders,
+                screen=MenuActionEnum.HISTORY,
+                page=page,
+                has_next_page=has_next_page,
+            ),
         )
 
     if action == MenuActionEnum.ARCHIVE:
+        page = _parse_page(value)
         reminders = await uow.reminders.list_completed_since(
             user_id=user.id,
             since=now - timedelta(days=ARCHIVE_LOOKBACK_DAYS),
-            limit=MENU_LIST_LIMIT,
+            limit=MENU_PAGE_SIZE + 1,
+            offset=page * MENU_PAGE_SIZE,
         )
+        visible_reminders, has_next_page = _page_items(reminders)
         return (
-            format_reminder_list(
-                title="🗄️ Completed tasks, last 3 months",
+            format_reminder_list_screen(
+                title=MENU_ARCHIVE_BUTTON_TEXT,
                 empty_text="No completed reminders in the last 3 months.",
-                reminders=reminders,
-                timezone=user.settings.timezone,
-                time_field="completed",
+                reminders=visible_reminders,
+                page=page,
             ),
-            back_to_menu_keyboard(),
+            reminder_list_keyboard(
+                reminders=visible_reminders,
+                screen=MenuActionEnum.ARCHIVE,
+                page=page,
+                has_next_page=has_next_page,
+            ),
         )
 
     if action == MenuActionEnum.NEW_REMINDER:
@@ -204,7 +240,12 @@ async def edit_or_answer_menu(
 ) -> None:
     await callback.answer()
     if isinstance(callback.message, Message):
-        await callback.message.edit_text(text, reply_markup=reply_markup)
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup)
+        except TelegramBadRequest as exc:
+            if _is_message_not_modified_error(exc):
+                return
+            raise
 
 
 def format_main_menu() -> str:
@@ -215,6 +256,10 @@ def format_reply_menu_intro() -> str:
     return "Menu is pinned below. Choose an action or send a reminder anytime."
 
 
+def _is_message_not_modified_error(exc: TelegramBadRequest) -> bool:
+    return "message is not modified" in exc.message.lower()
+
+
 def format_settings_menu(user: User) -> str:
     return (
         "⚙️ Settings\n\n"
@@ -223,34 +268,17 @@ def format_settings_menu(user: User) -> str:
     )
 
 
-def format_reminder_list(
+def format_reminder_list_screen(
     *,
     title: str,
     empty_text: str,
     reminders: list[Reminder],
-    timezone: str,
-    time_field: str,
+    page: int,
 ) -> str:
     if not reminders:
         return f"{title}\n\n{empty_text}"
 
-    lines = [title, ""]
-    for index, reminder in enumerate(reminders, start=1):
-        timestamp = _reminder_timestamp(reminder, time_field)
-        formatted_time = _format_datetime(timestamp, timezone)
-        lines.append(
-            f"{index}. {reminder.reminder_text}\n   {formatted_time} · {reminder.status.value}"
-        )
-
-    return "\n".join(lines)
-
-
-def _reminder_timestamp(reminder: Reminder, time_field: str) -> datetime | None:
-    if time_field == "completed":
-        return reminder.completed_at
-    if time_field == "created":
-        return reminder.created_at
-    return reminder.due_at
+    return f"{title}\n\nPage {page + 1}. Choose a reminder."
 
 
 def _parse_repeat_interval(value: str | None, default: int) -> int:
@@ -263,11 +291,13 @@ def _parse_repeat_interval(value: str | None, default: int) -> int:
     return interval
 
 
-def _format_datetime(value: datetime | None, timezone: str) -> str:
-    if value is None:
-        return "unknown"
+def _parse_page(value: str | None) -> int:
     try:
-        value = value.astimezone(ZoneInfo(timezone))
-    except ZoneInfoNotFoundError:
-        value = value.astimezone(ZoneInfo("UTC"))
-    return value.strftime("%Y-%m-%d %H:%M")
+        page = int(value or "0")
+    except ValueError:
+        return 0
+    return max(page, 0)
+
+
+def _page_items(reminders: list[Reminder]) -> tuple[list[Reminder], bool]:
+    return reminders[:MENU_PAGE_SIZE], len(reminders) > MENU_PAGE_SIZE
