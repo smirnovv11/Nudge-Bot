@@ -9,17 +9,17 @@ from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.domain import ReminderToSend
 from nudge_bot.reminders.draft_payloads import EDIT_TIME_REMINDER_ID
 from nudge_bot.reminders.enums import (
-    DraftStatus,
-    DraftType,
-    ReminderDeliveryStatus,
-    ReminderStatus,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ReminderDeliveryStatusEnum,
+    ReminderStatusEnum,
 )
 from nudge_bot.storage.models import Draft, Reminder, ReminderAttempt, User, UserSettings
 
 DELIVERABLE_STATUSES = [
-    ReminderStatus.ACTIVE,
-    ReminderStatus.SNOOZED,
-    ReminderStatus.SENT,
+    ReminderStatusEnum.ACTIVE,
+    ReminderStatusEnum.SNOOZED,
+    ReminderStatusEnum.SENT,
 ]
 
 
@@ -37,8 +37,8 @@ class ReminderRepository:
                 ~select(Draft.id)
                 .where(
                     Draft.user_id == Reminder.user_id,
-                    Draft.type == DraftType.REMINDER_EDIT_TIME,
-                    Draft.status == DraftStatus.PENDING,
+                    Draft.type == DraftTypeEnum.REMINDER_EDIT_TIME,
+                    Draft.status == DraftStatusEnum.PENDING,
                     Draft.expires_at > now,
                     Draft.payload[EDIT_TIME_REMINDER_ID].as_integer() == Reminder.id,
                 )
@@ -59,7 +59,7 @@ class ReminderRepository:
             select(ReminderAttempt.telegram_message_id)
             .where(
                 ReminderAttempt.reminder_id == Reminder.id,
-                ReminderAttempt.delivery_status == ReminderDeliveryStatus.SENT,
+                ReminderAttempt.delivery_status == ReminderDeliveryStatusEnum.SENT,
                 ReminderAttempt.telegram_message_id.is_not(None),
             )
             .order_by(ReminderAttempt.attempt_no.desc())
@@ -70,7 +70,7 @@ class ReminderRepository:
         await self._session.execute(
             update(Reminder)
             .where(Reminder.id.in_(reminder_ids))
-            .values(status=ReminderStatus.SENDING, locked_at=now)
+            .values(status=ReminderStatusEnum.SENDING, locked_at=now)
         )
 
         reminders_query = (
@@ -105,7 +105,7 @@ class ReminderRepository:
                     reminder_text=reminder.reminder_text,
                     due_at=reminder.due_at,
                     repeat_interval_minutes=repeat_interval_minutes,
-                    is_auto_repeat=reminder_statuses[reminder.id] == ReminderStatus.SENT,
+                    is_auto_repeat=reminder_statuses[reminder.id] == ReminderStatusEnum.SENT,
                     previous_telegram_message_id=last_telegram_message_id,
                 )
             )
@@ -141,9 +141,9 @@ class ReminderRepository:
     ) -> None:
         await self._session.execute(
             update(Reminder)
-            .where(Reminder.id == reminder_id, Reminder.status == ReminderStatus.SENDING)
+            .where(Reminder.id == reminder_id, Reminder.status == ReminderStatusEnum.SENDING)
             .values(
-                status=ReminderStatus.SENT,
+                status=ReminderStatusEnum.SENT,
                 due_at=now + timedelta(minutes=repeat_interval_minutes),
                 locked_at=None,
             )
@@ -156,8 +156,8 @@ class ReminderRepository:
     ) -> None:
         await self._session.execute(
             update(Reminder)
-            .where(Reminder.id == reminder_id, Reminder.status == ReminderStatus.SENDING)
-            .values(status=ReminderStatus.ACTIVE, locked_at=None)
+            .where(Reminder.id == reminder_id, Reminder.status == ReminderStatusEnum.SENDING)
+            .values(status=ReminderStatusEnum.ACTIVE, locked_at=None)
         )
 
     def add(self, reminder: Reminder) -> None:

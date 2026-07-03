@@ -23,21 +23,21 @@ from nudge_bot.bot.routers.reminders import (
 )
 from nudge_bot.reminders.domain import ReminderResult
 from nudge_bot.reminders.enums import (
-    CallbackAction,
-    DraftStatus,
-    DraftType,
-    ParserIntent,
-    ReminderStatus,
+    CallbackActionEnum,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ParserIntentEnum,
+    ReminderStatusEnum,
 )
 from nudge_bot.reminders.parser import ParsedReminderDraft
 from nudge_bot.reminders.services.schemas import (
-    DraftActionOutcome,
+    DraftActionOutcomeEnum,
     DraftActionResult,
-    EditTimeOutcome,
+    EditTimeOutcomeEnum,
     EditTimeResult,
-    TextReminderOutcome,
+    TextReminderOutcomeEnum,
     TextReminderResult,
-    VoiceReminderOutcome,
+    VoiceReminderOutcomeEnum,
     VoiceReminderResult,
 )
 from nudge_bot.storage.models import Draft, Reminder
@@ -56,8 +56,8 @@ def test_draft_confirmation_keyboard_packs_confirm_and_cancel_callbacks() -> Non
 
     assert [button.text for button in buttons] == ["✅ Create", "✖️ Cancel"]
     assert callbacks == [
-        ReminderDraftCallback(action=CallbackAction.CONFIRM, draft_id=42),
-        ReminderDraftCallback(action=CallbackAction.CANCEL, draft_id=42),
+        ReminderDraftCallback(action=CallbackActionEnum.CONFIRM, draft_id=42),
+        ReminderDraftCallback(action=CallbackActionEnum.CANCEL, draft_id=42),
     ]
 
 
@@ -68,7 +68,7 @@ def test_edit_time_cancel_keyboard_packs_cancel_callback() -> None:
     callback = ReminderDraftCallback.unpack(button.callback_data)
 
     assert button.text == "Cancel"
-    assert callback == ReminderDraftCallback(action=CallbackAction.CANCEL, draft_id=42)
+    assert callback == ReminderDraftCallback(action=CallbackActionEnum.CANCEL, draft_id=42)
 
 
 def test_reminder_actions_keyboard_packs_fired_reminder_callbacks() -> None:
@@ -80,17 +80,17 @@ def test_reminder_actions_keyboard_packs_fired_reminder_callbacks() -> None:
     assert [button.text for button in buttons] == ["✅ Read", "🔁 Repeat", "🕒 Choose time"]
     assert callbacks == [
         ReminderActionCallback(
-            action=CallbackAction.READ,
+            action=CallbackActionEnum.READ,
             reminder_id=42,
             notification_id=7,
         ),
         ReminderActionCallback(
-            action=CallbackAction.REPEAT,
+            action=CallbackActionEnum.REPEAT,
             reminder_id=42,
             notification_id=7,
         ),
         ReminderActionCallback(
-            action=CallbackAction.CHOOSE_TIME,
+            action=CallbackActionEnum.CHOOSE_TIME,
             reminder_id=42,
             notification_id=7,
         ),
@@ -100,20 +100,20 @@ def test_reminder_actions_keyboard_packs_fired_reminder_callbacks() -> None:
 def test_text_result_format_for_created_reminder_is_user_facing() -> None:
     due_at = datetime(2026, 6, 24, 12, 20, tzinfo=UTC)
     result = TextReminderResult(
-        outcome=TextReminderOutcome.CREATED,
+        outcome=TextReminderOutcomeEnum.CREATED,
         user_id=10,
         parsed=ParsedReminderDraft(
             input_text="walk the dog in 20 minutes",
             reminder_text="walk the dog",
             due_at=due_at,
             parse_confidence=0.9,
-            intent_kind=ParserIntent.REMINDER,
+            intent_kind=ParserIntentEnum.REMINDER,
             needs_confirmation=False,
         ),
         display_timezone="Europe/Minsk",
         reminder=Reminder(
             user_id=10,
-            status=ReminderStatus.ACTIVE,
+            status=ReminderStatusEnum.ACTIVE,
             reminder_text="walk the dog",
             due_at=due_at,
         ),
@@ -130,22 +130,22 @@ def test_text_result_format_for_created_reminder_is_user_facing() -> None:
 def test_text_result_format_for_pending_draft_is_user_facing() -> None:
     due_at = datetime(2026, 6, 25, 12, 0, tzinfo=UTC)
     result = TextReminderResult(
-        outcome=TextReminderOutcome.DRAFT,
+        outcome=TextReminderOutcomeEnum.DRAFT,
         user_id=10,
         parsed=ParsedReminderDraft(
             input_text="pick up order tomorrow",
             reminder_text="pick up order",
             due_at=due_at,
             parse_confidence=0.6,
-            intent_kind=ParserIntent.REMINDER,
+            intent_kind=ParserIntentEnum.REMINDER,
             needs_confirmation=True,
         ),
         display_timezone="Europe/Minsk",
         draft=Draft(
             id=42,
             user_id=10,
-            type=DraftType.REMINDER_CONFIRMATION,
-            status=DraftStatus.PENDING,
+            type=DraftTypeEnum.REMINDER_CONFIRMATION,
+            status=DraftStatusEnum.PENDING,
             input_text="pick up order tomorrow",
             parsed_text="pick up order",
             parsed_due_at=due_at,
@@ -167,8 +167,8 @@ def test_draft_action_result_format_for_cancel_is_user_facing() -> None:
     draft = Draft(
         id=42,
         user_id=10,
-        type=DraftType.REMINDER_CONFIRMATION,
-        status=DraftStatus.CANCELLED,
+        type=DraftTypeEnum.REMINDER_CONFIRMATION,
+        status=DraftStatusEnum.CANCELLED,
         input_text="pick up order tomorrow",
         parsed_text="pick up order",
         parsed_due_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
@@ -178,7 +178,7 @@ def test_draft_action_result_format_for_cancel_is_user_facing() -> None:
     )
 
     message = format_draft_action_result(
-        DraftActionResult(outcome=DraftActionOutcome.CANCELLED, draft=draft, changed=True)
+        DraftActionResult(outcome=DraftActionOutcomeEnum.CANCELLED, draft=draft, changed=True)
     )
 
     assert message == "✖️ Reminder draft cancelled"
@@ -188,8 +188,8 @@ def test_draft_action_result_format_for_expired_is_user_facing() -> None:
     draft = Draft(
         id=42,
         user_id=10,
-        type=DraftType.REMINDER_CONFIRMATION,
-        status=DraftStatus.EXPIRED,
+        type=DraftTypeEnum.REMINDER_CONFIRMATION,
+        status=DraftStatusEnum.EXPIRED,
         input_text="pick up order tomorrow",
         parsed_text="pick up order",
         parsed_due_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
@@ -199,7 +199,7 @@ def test_draft_action_result_format_for_expired_is_user_facing() -> None:
     )
 
     message = format_draft_action_result(
-        DraftActionResult(outcome=DraftActionOutcome.EXPIRED, draft=draft, changed=False)
+        DraftActionResult(outcome=DraftActionOutcomeEnum.EXPIRED, draft=draft, changed=False)
     )
 
     assert message == "⌛ This reminder draft expired\nSend the reminder again"
@@ -209,14 +209,14 @@ def test_draft_action_result_format_falls_back_for_invalid_timezone() -> None:
     due_at = datetime(2026, 6, 25, 12, 0, tzinfo=UTC)
     reminder = Reminder(
         user_id=10,
-        status=ReminderStatus.ACTIVE,
+        status=ReminderStatusEnum.ACTIVE,
         reminder_text="pick up order",
         due_at=due_at,
     )
 
     message = format_draft_action_result(
         DraftActionResult(
-            outcome=DraftActionOutcome.CONFIRMED,
+            outcome=DraftActionOutcomeEnum.CONFIRMED,
             draft=None,
             reminder=reminder,
             changed=True,
@@ -234,7 +234,7 @@ def test_reminder_action_result_format_is_user_facing() -> None:
         format_reminder_action_result(
             ReminderResult(
                 reminder_id=42,
-                status=ReminderStatus.SNOOZED,
+                status=ReminderStatusEnum.SNOOZED,
                 changed=True,
                 due_at=repeated_at,
             )
@@ -243,7 +243,7 @@ def test_reminder_action_result_format_is_user_facing() -> None:
     )
     assert (
         format_reminder_action_result(
-            ReminderResult(reminder_id=42, status=ReminderStatus.COMPLETED, changed=True)
+            ReminderResult(reminder_id=42, status=ReminderStatusEnum.COMPLETED, changed=True)
         )
         == "✅ Reminder completed"
     )
@@ -255,7 +255,7 @@ def test_reminder_action_result_format_uses_display_timezone() -> None:
     message = format_reminder_action_result(
         ReminderResult(
             reminder_id=42,
-            status=ReminderStatus.SNOOZED,
+            status=ReminderStatusEnum.SNOOZED,
             changed=True,
             due_at=repeated_at,
         ),
@@ -268,7 +268,7 @@ def test_reminder_action_result_format_uses_display_timezone() -> None:
 def test_edit_time_awaiting_input_format_is_user_facing() -> None:
     message = format_edit_time_result(
         EditTimeResult(
-            outcome=EditTimeOutcome.AWAITING_INPUT,
+            outcome=EditTimeOutcomeEnum.AWAITING_INPUT,
             changed=True,
             display_timezone="Europe/Minsk",
         )
@@ -286,8 +286,8 @@ def test_edit_time_prompt_is_sent_only_for_new_pending_draft() -> None:
     draft = Draft(
         id=42,
         user_id=10,
-        type=DraftType.REMINDER_EDIT_TIME,
-        status=DraftStatus.PENDING,
+        type=DraftTypeEnum.REMINDER_EDIT_TIME,
+        status=DraftStatusEnum.PENDING,
         input_text="",
         payload={"reminder_id": 1},
         expires_at=datetime(2026, 6, 25, 12, 0, tzinfo=UTC),
@@ -295,13 +295,13 @@ def test_edit_time_prompt_is_sent_only_for_new_pending_draft() -> None:
 
     assert (
         should_send_edit_time_prompt(
-            EditTimeResult(outcome=EditTimeOutcome.AWAITING_INPUT, changed=True, draft=draft)
+            EditTimeResult(outcome=EditTimeOutcomeEnum.AWAITING_INPUT, changed=True, draft=draft)
         )
         is True
     )
     assert (
         should_send_edit_time_prompt(
-            EditTimeResult(outcome=EditTimeOutcome.AWAITING_INPUT, changed=False, draft=draft)
+            EditTimeResult(outcome=EditTimeOutcomeEnum.AWAITING_INPUT, changed=False, draft=draft)
         )
         is False
     )
@@ -310,14 +310,14 @@ def test_edit_time_prompt_is_sent_only_for_new_pending_draft() -> None:
 def test_edit_time_rescheduled_format_uses_display_timezone() -> None:
     reminder = Reminder(
         user_id=10,
-        status=ReminderStatus.SNOOZED,
+        status=ReminderStatusEnum.SNOOZED,
         reminder_text="pick up order",
         due_at=datetime(2026, 6, 25, 21, 5, tzinfo=UTC),
     )
 
     message = format_edit_time_result(
         EditTimeResult(
-            outcome=EditTimeOutcome.RESCHEDULED,
+            outcome=EditTimeOutcomeEnum.RESCHEDULED,
             changed=True,
             display_timezone="Europe/Minsk",
             reminder=reminder,
@@ -330,20 +330,20 @@ def test_edit_time_rescheduled_format_uses_display_timezone() -> None:
 def test_voice_result_format_reuses_text_result_format() -> None:
     due_at = datetime(2026, 6, 24, 12, 20, tzinfo=UTC)
     text_result = TextReminderResult(
-        outcome=TextReminderOutcome.CREATED,
+        outcome=TextReminderOutcomeEnum.CREATED,
         user_id=10,
         parsed=ParsedReminderDraft(
             input_text="walk the dog in 20 minutes",
             reminder_text="walk the dog",
             due_at=due_at,
             parse_confidence=0.9,
-            intent_kind=ParserIntent.REMINDER,
+            intent_kind=ParserIntentEnum.REMINDER,
             needs_confirmation=False,
         ),
         display_timezone="Europe/Minsk",
         reminder=Reminder(
             user_id=10,
-            status=ReminderStatus.ACTIVE,
+            status=ReminderStatusEnum.ACTIVE,
             reminder_text="walk the dog",
             due_at=due_at,
         ),
@@ -351,7 +351,7 @@ def test_voice_result_format_reuses_text_result_format() -> None:
 
     message = format_voice_reminder_result(
         VoiceReminderResult(
-            outcome=VoiceReminderOutcome.PROCESSED,
+            outcome=VoiceReminderOutcomeEnum.PROCESSED,
             text_result=text_result,
         )
     )
@@ -362,7 +362,7 @@ def test_voice_result_format_reuses_text_result_format() -> None:
 
 def test_voice_result_format_for_pending_edit_time_asks_for_text() -> None:
     message = format_voice_reminder_result(
-        VoiceReminderResult(outcome=VoiceReminderOutcome.PENDING_EDIT_TIME)
+        VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.PENDING_EDIT_TIME)
     )
 
     assert message == "Send the new time as text or press Cancel"
@@ -370,7 +370,7 @@ def test_voice_result_format_for_pending_edit_time_asks_for_text() -> None:
 
 def test_voice_result_format_for_too_long_asks_for_short_voice() -> None:
     message = format_voice_reminder_result(
-        VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LONG)
+        VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TOO_LONG)
     )
 
     assert message == "That voice message is too long for fast reminders\nTry 15 seconds or less"
@@ -388,7 +388,7 @@ async def test_voice_download_stops_when_payload_exceeds_limit() -> None:
 
 def test_reminder_action_callback_key_is_stable_for_notification() -> None:
     callback_data = ReminderActionCallback(
-        action=CallbackAction.REPEAT,
+        action=CallbackActionEnum.REPEAT,
         reminder_id=42,
         notification_id=7,
     )

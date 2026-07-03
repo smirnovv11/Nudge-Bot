@@ -14,7 +14,7 @@ from nudge_bot.bot.callbacks import ReminderActionCallback, ReminderDraftCallbac
 from nudge_bot.bot.keyboards import draft_confirmation_keyboard, edit_time_cancel_keyboard
 from nudge_bot.config import Settings
 from nudge_bot.reminders.domain import ReminderResult
-from nudge_bot.reminders.enums import CallbackAction, DraftType, ReminderStatus
+from nudge_bot.reminders.enums import CallbackActionEnum, DraftTypeEnum, ReminderStatusEnum
 from nudge_bot.reminders.services import (
     DraftFlowService,
     ReminderActionService,
@@ -23,13 +23,13 @@ from nudge_bot.reminders.services import (
     VoiceReminderService,
 )
 from nudge_bot.reminders.services.schemas import (
-    DraftActionOutcome,
+    DraftActionOutcomeEnum,
     DraftActionResult,
-    EditTimeOutcome,
+    EditTimeOutcomeEnum,
     EditTimeResult,
-    TextReminderOutcome,
+    TextReminderOutcomeEnum,
     TextReminderResult,
-    VoiceReminderOutcome,
+    VoiceReminderOutcomeEnum,
     VoiceReminderResult,
 )
 from nudge_bot.reminders.services.voice import BYTES_PER_MEGABYTE
@@ -86,7 +86,7 @@ async def handle_text_message(
             now=datetime.now(UTC),
             settings=settings,
         )
-        if edit_time_result.outcome == EditTimeOutcome.NO_PENDING_DRAFT:
+        if edit_time_result.outcome == EditTimeOutcomeEnum.NO_PENDING_DRAFT:
             result = await text_reminder_service.handle_text_reminder(
                 uow,
                 telegram_user_id=message.from_user.id,
@@ -99,11 +99,11 @@ async def handle_text_message(
         else:
             result = None
 
-    if edit_time_result.outcome != EditTimeOutcome.NO_PENDING_DRAFT:
+    if edit_time_result.outcome != EditTimeOutcomeEnum.NO_PENDING_DRAFT:
         await message.answer(format_edit_time_result(edit_time_result), parse_mode="HTML")
         return
 
-    if result.outcome == TextReminderOutcome.DRAFT and result.draft is not None:
+    if result.outcome == TextReminderOutcomeEnum.DRAFT and result.draft is not None:
         await message.answer(
             format_text_reminder_result(result),
             reply_markup=draft_confirmation_keyboard(result.draft.id),
@@ -127,7 +127,7 @@ async def handle_voice_message(
     if payload is None:
         await message.answer(
             format_voice_reminder_result(
-                VoiceReminderResult(outcome=VoiceReminderOutcome.UNSUPPORTED)
+                VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.UNSUPPORTED)
             )
         )
         return
@@ -155,7 +155,7 @@ async def handle_voice_message(
             message=message,
             processing_message=processing_message,
             text=format_voice_reminder_result(
-                VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE),
+                VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TOO_LARGE),
             ),
         )
         return
@@ -168,7 +168,7 @@ async def handle_voice_message(
             message=message,
             processing_message=processing_message,
             text=format_voice_reminder_result(
-                VoiceReminderResult(outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED),
+                VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TRANSCRIPTION_FAILED),
             ),
         )
         return
@@ -225,7 +225,7 @@ async def handle_voice_message(
 
     if (
         result.text_result is not None
-        and result.text_result.outcome == TextReminderOutcome.DRAFT
+        and result.text_result.outcome == TextReminderOutcomeEnum.DRAFT
         and result.text_result.draft is not None
     ):
         await edit_voice_processing_message(
@@ -245,7 +245,7 @@ async def handle_voice_message(
 
 @router.callback_query(
     ReminderDraftCallback.filter(
-        F.action.in_({CallbackAction.CONFIRM.value, CallbackAction.CANCEL.value})
+        F.action.in_({CallbackActionEnum.CONFIRM.value, CallbackActionEnum.CANCEL.value})
     )
 )
 async def handle_draft_callback(
@@ -260,7 +260,7 @@ async def handle_draft_callback(
         user = await uow.users.get_by_telegram_id(callback.from_user.id)
         if user is None:
             unavailable_message = "🙈 I could not find your reminder draft"
-        elif callback_data.action == CallbackAction.CONFIRM:
+        elif callback_data.action == CallbackActionEnum.CONFIRM:
             try:
                 result = await draft_flow_service.confirm_draft(
                     uow,
@@ -288,8 +288,8 @@ async def handle_draft_callback(
     await callback.answer()
     if result is not None and isinstance(callback.message, Message):
         if (
-            callback_data.action == CallbackAction.CANCEL
-            and result.draft.type == DraftType.REMINDER_EDIT_TIME
+            callback_data.action == CallbackActionEnum.CANCEL
+            and result.draft.type == DraftTypeEnum.REMINDER_EDIT_TIME
         ):
             try:
                 await callback.message.delete()
@@ -304,9 +304,9 @@ async def handle_draft_callback(
     ReminderActionCallback.filter(
         F.action.in_(
             {
-                CallbackAction.READ.value,
-                CallbackAction.REPEAT.value,
-                CallbackAction.CHOOSE_TIME.value,
+                CallbackActionEnum.READ.value,
+                CallbackActionEnum.REPEAT.value,
+                CallbackActionEnum.CHOOSE_TIME.value,
             }
         )
     )
@@ -328,7 +328,7 @@ async def handle_reminder_action_callback(
             user = await uow.users.get_by_telegram_id(callback.from_user.id)
             if user is None:
                 unavailable_message = "🙈 I could not find this reminder"
-            elif callback_data.action == CallbackAction.CHOOSE_TIME:
+            elif callback_data.action == CallbackActionEnum.CHOOSE_TIME:
                 display_timezone = (
                     user.settings.timezone
                     if user.settings is not None
@@ -381,7 +381,7 @@ async def handle_reminder_action_callback(
             )
             return
 
-        if edit_time_result.outcome == EditTimeOutcome.AWAITING_INPUT:
+        if edit_time_result.outcome == EditTimeOutcomeEnum.AWAITING_INPUT:
             await callback.answer("Already waiting for a new time", show_alert=True)
             return
 
@@ -394,21 +394,21 @@ async def handle_reminder_action_callback(
 
 
 def format_text_reminder_result(result: TextReminderResult) -> str:
-    if result.outcome == TextReminderOutcome.CREATED and result.reminder is not None:
+    if result.outcome == TextReminderOutcomeEnum.CREATED and result.reminder is not None:
         return (
             "✅ Reminder created\n\n"
             f"📝 {result.reminder.reminder_text}\n"
             f"🕒 {_format_datetime(result.reminder.due_at, result.display_timezone)}"
         )
 
-    if result.outcome == TextReminderOutcome.DRAFT and result.draft is not None:
+    if result.outcome == TextReminderOutcomeEnum.DRAFT and result.draft is not None:
         return (
             "✨ Create this reminder?\n\n"
             f"📝 {result.draft.parsed_text}\n"
             f"🕒 {_format_datetime(result.draft.parsed_due_at, result.display_timezone)}"
         )
 
-    if result.outcome == TextReminderOutcome.NOTE:
+    if result.outcome == TextReminderOutcomeEnum.NOTE:
         return "🗒️ Notes are coming later\nSend a reminder with a time"
 
     return "🤔 I could not find a reminder time\nTry something like: walk the dog in 20 minutes"
@@ -418,36 +418,36 @@ def format_voice_reminder_result(result: VoiceReminderResult) -> str:
     if result.text_result is not None:
         return format_text_reminder_result(result.text_result)
 
-    if result.outcome == VoiceReminderOutcome.PENDING_EDIT_TIME:
+    if result.outcome == VoiceReminderOutcomeEnum.PENDING_EDIT_TIME:
         return "Send the new time as text or press Cancel"
 
-    if result.outcome == VoiceReminderOutcome.EMPTY_TRANSCRIPT:
+    if result.outcome == VoiceReminderOutcomeEnum.EMPTY_TRANSCRIPT:
         return "I could not hear a reminder in that voice message\nTry sending it as text"
 
-    if result.outcome == VoiceReminderOutcome.TOO_LARGE:
+    if result.outcome == VoiceReminderOutcomeEnum.TOO_LARGE:
         return "That audio is too large for voice reminders\nTry a shorter voice message"
 
-    if result.outcome == VoiceReminderOutcome.TOO_LONG:
+    if result.outcome == VoiceReminderOutcomeEnum.TOO_LONG:
         return "That voice message is too long for fast reminders\nTry 15 seconds or less"
 
-    if result.outcome == VoiceReminderOutcome.UNSUPPORTED:
+    if result.outcome == VoiceReminderOutcomeEnum.UNSUPPORTED:
         return "This audio message is not supported yet\nTry sending a Telegram voice message"
 
     return "Voice input is unavailable locally right now\nSend the reminder as text"
 
 
 def format_draft_action_result(result: DraftActionResult) -> str:
-    if result.outcome == DraftActionOutcome.CONFIRMED and result.reminder is not None:
+    if result.outcome == DraftActionOutcomeEnum.CONFIRMED and result.reminder is not None:
         due_at = _format_datetime(result.reminder.due_at, result.display_timezone)
         return f"✅ Reminder created\n\n📝 {result.reminder.reminder_text}\n🕒 {due_at}"
 
-    if result.outcome == DraftActionOutcome.CANCELLED:
+    if result.outcome == DraftActionOutcomeEnum.CANCELLED:
         return "✖️ Reminder draft cancelled"
 
-    if result.outcome == DraftActionOutcome.ALREADY_CONFIRMED:
+    if result.outcome == DraftActionOutcomeEnum.ALREADY_CONFIRMED:
         return "✅ This reminder draft was already confirmed"
 
-    if result.outcome == DraftActionOutcome.EXPIRED:
+    if result.outcome == DraftActionOutcomeEnum.EXPIRED:
         return "⌛ This reminder draft expired\nSend the reminder again"
 
     return "✖️ This reminder draft was already cancelled"
@@ -457,17 +457,17 @@ def format_reminder_action_result(
     result: ReminderResult,
     display_timezone: str | None = None,
 ) -> str:
-    if result.status == ReminderStatus.COMPLETED:
+    if result.status == ReminderStatusEnum.COMPLETED:
         return "✅ Reminder completed"
 
-    if result.status == ReminderStatus.SNOOZED:
+    if result.status == ReminderStatusEnum.SNOOZED:
         return f"🔁 Reminder repeated\n🕒 {_format_datetime(result.due_at, display_timezone)}"
 
     return "👌 Reminder already handled"
 
 
 def format_edit_time_result(result: EditTimeResult) -> str:
-    if result.outcome == EditTimeOutcome.AWAITING_INPUT:
+    if result.outcome == EditTimeOutcomeEnum.AWAITING_INPUT:
         return (
             "🕒 Отправьте новое время\n"
             "Send the new time\n\n"
@@ -475,22 +475,22 @@ def format_edit_time_result(result: EditTimeResult) -> str:
             "💡 <i>For example: tomorrow at 9 / in 20 minutes</i>"
         )
 
-    if result.outcome == EditTimeOutcome.RESCHEDULED and result.reminder is not None:
+    if result.outcome == EditTimeOutcomeEnum.RESCHEDULED and result.reminder is not None:
         return (
             "✅ Reminder rescheduled\n"
             f"🕒 {_format_datetime(result.reminder.due_at, result.display_timezone)}"
         )
 
-    if result.outcome == EditTimeOutcome.UNKNOWN:
+    if result.outcome == EditTimeOutcomeEnum.UNKNOWN:
         return "Не получилось понять новое время\nПопробуйте: завтра в 9 / через 20 минут"
 
-    if result.outcome == EditTimeOutcome.EXPIRED:
+    if result.outcome == EditTimeOutcomeEnum.EXPIRED:
         return "This time edit expired\nPress Choose time again"
 
-    if result.outcome == EditTimeOutcome.ALREADY_HANDLED:
+    if result.outcome == EditTimeOutcomeEnum.ALREADY_HANDLED:
         return "This reminder is already handled"
 
-    if result.outcome == EditTimeOutcome.CANCELLED:
+    if result.outcome == EditTimeOutcomeEnum.CANCELLED:
         return "This time edit is no longer available"
 
     return "No reminder is waiting for a new time"
@@ -498,7 +498,7 @@ def format_edit_time_result(result: EditTimeResult) -> str:
 
 def should_send_edit_time_prompt(result: EditTimeResult) -> bool:
     return (
-        result.outcome == EditTimeOutcome.AWAITING_INPUT
+        result.outcome == EditTimeOutcomeEnum.AWAITING_INPUT
         and result.changed
         and result.draft is not None
     )

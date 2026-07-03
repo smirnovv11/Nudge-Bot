@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from nudge_bot.reminders.enums import ParserIntent
+from nudge_bot.reminders.enums import ParserIntentEnum
 from nudge_bot.reminders.intake import TextReminderInput, TextReminderInputStrategy
 
 
@@ -18,5 +18,5 @@ def test_text_input_strategy_reuses_reminder_parser() -> None:
         )
     )
 
-    assert draft.intent_kind == ParserIntent.REMINDER
+    assert draft.intent_kind == ParserIntentEnum.REMINDER
     assert draft.due_at is not None

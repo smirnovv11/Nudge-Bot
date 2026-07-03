@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from nudge_bot.reminders.enums import ReminderStatus
+from nudge_bot.reminders.enums import ReminderStatusEnum
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class ReminderToSend:
 @dataclass(frozen=True)
 class ReminderResult:
     reminder_id: int
-    status: ReminderStatus
+    status: ReminderStatusEnum
     changed: bool
     due_at: datetime | None = None
 

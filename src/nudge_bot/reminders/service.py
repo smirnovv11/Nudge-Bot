@@ -4,7 +4,7 @@ from datetime import datetime
 
 from nudge_bot.config import Settings
 from nudge_bot.reminders.domain import ReminderResult, ReminderToSend
-from nudge_bot.reminders.enums import CallbackAction
+from nudge_bot.reminders.enums import CallbackActionEnum
 from nudge_bot.reminders.services import (
     DraftActionResult,
     DraftFlowService,
@@ -120,7 +120,7 @@ async def process_callback_action(
     uow: UnitOfWork,
     *,
     callback_key: str,
-    action: CallbackAction,
+    action: CallbackActionEnum,
     reminder_id: int,
     user_id: int,
     interval_minutes: int,

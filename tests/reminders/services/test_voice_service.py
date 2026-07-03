@@ -9,14 +9,14 @@ import pytest
 
 from nudge_bot.config import Settings
 from nudge_bot.reminders.draft_payloads import edit_time_payload
-from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderSourceType
+from nudge_bot.reminders.enums import DraftStatusEnum, DraftTypeEnum, ReminderSourceTypeEnum
 from nudge_bot.reminders.services import VoiceReminderService
 from nudge_bot.reminders.services.intake import SOURCE_METADATA_PAYLOAD_KEY, SOURCE_TYPE_PAYLOAD_KEY
 from nudge_bot.reminders.services.schemas import (
-    TextReminderOutcome,
-    VoiceReminderOutcome,
+    TextReminderOutcomeEnum,
+    VoiceReminderOutcomeEnum,
     VoiceTranscript,
-    VoiceTranscriptionOutcome,
+    VoiceTranscriptionOutcomeEnum,
     VoiceTranscriptionResult,
 )
 from nudge_bot.reminders.services.voice import BYTES_PER_MEGABYTE, _transcribe_with_model
@@ -63,11 +63,11 @@ async def test_voice_reminder_creates_voice_reminder_from_transcript() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == VoiceReminderOutcome.PROCESSED
+    assert result.outcome == VoiceReminderOutcomeEnum.PROCESSED
     assert result.text_result is not None
-    assert result.text_result.outcome == TextReminderOutcome.CREATED
+    assert result.text_result.outcome == TextReminderOutcomeEnum.CREATED
     assert result.text_result.reminder is reminders.added[0]
-    assert result.text_result.reminder.source_type == ReminderSourceType.VOICE
+    assert result.text_result.reminder.source_type == ReminderSourceTypeEnum.VOICE
     assert result.text_result.reminder.extra["source_file_unique_id"] == "voice-file"
     assert result.text_result.reminder.extra["mime_type"] == "audio/ogg"
 
@@ -87,11 +87,11 @@ async def test_voice_reminder_creates_voice_confirmation_draft_for_uncertain_tra
         settings=SETTINGS,
     )
 
-    assert result.outcome == VoiceReminderOutcome.PROCESSED
+    assert result.outcome == VoiceReminderOutcomeEnum.PROCESSED
     assert result.text_result is not None
-    assert result.text_result.outcome == TextReminderOutcome.DRAFT
+    assert result.text_result.outcome == TextReminderOutcomeEnum.DRAFT
     assert result.text_result.draft is drafts.added[0]
-    assert result.text_result.draft.payload[SOURCE_TYPE_PAYLOAD_KEY] == ReminderSourceType.VOICE
+    assert result.text_result.draft.payload[SOURCE_TYPE_PAYLOAD_KEY] == ReminderSourceTypeEnum.VOICE
     assert (
         result.text_result.draft.payload[SOURCE_METADATA_PAYLOAD_KEY]["source_file_unique_id"]
         == "voice-file"
@@ -108,13 +108,13 @@ async def test_empty_voice_transcript_creates_nothing() -> None:
         telegram_user_id=100,
         username=None,
         locale="ru",
-        transcription=VoiceTranscriptionResult(outcome=VoiceTranscriptionOutcome.EMPTY),
+        transcription=VoiceTranscriptionResult(outcome=VoiceTranscriptionOutcomeEnum.EMPTY),
         mime_type="audio/ogg",
         now=NOW,
         settings=SETTINGS,
     )
 
-    assert result.outcome == VoiceReminderOutcome.EMPTY_TRANSCRIPT
+    assert result.outcome == VoiceReminderOutcomeEnum.EMPTY_TRANSCRIPT
     assert reminders.added == []
     assert drafts.added == []
 
@@ -130,7 +130,7 @@ async def test_failed_voice_transcript_creates_nothing() -> None:
         username=None,
         locale="ru",
         transcription=VoiceTranscriptionResult(
-            outcome=VoiceTranscriptionOutcome.FAILED,
+            outcome=VoiceTranscriptionOutcomeEnum.FAILED,
             error_message="model unavailable",
         ),
         mime_type="audio/ogg",
@@ -138,7 +138,7 @@ async def test_failed_voice_transcript_creates_nothing() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == VoiceReminderOutcome.TRANSCRIPTION_FAILED
+    assert result.outcome == VoiceReminderOutcomeEnum.TRANSCRIPTION_FAILED
     assert result.error_message == "model unavailable"
     assert reminders.added == []
     assert drafts.added == []
@@ -152,7 +152,7 @@ def test_oversized_voice_metadata_is_rejected_before_transcription() -> None:
     )
 
     assert result is not None
-    assert result.outcome == VoiceReminderOutcome.TOO_LARGE
+    assert result.outcome == VoiceReminderOutcomeEnum.TOO_LARGE
 
 
 def test_oversized_voice_bytes_are_rejected_when_metadata_is_missing() -> None:
@@ -164,7 +164,7 @@ def test_oversized_voice_bytes_are_rejected_when_metadata_is_missing() -> None:
     )
 
     assert result is not None
-    assert result.outcome == VoiceReminderOutcome.TOO_LARGE
+    assert result.outcome == VoiceReminderOutcomeEnum.TOO_LARGE
 
 
 def test_long_voice_is_rejected_before_transcription() -> None:
@@ -175,7 +175,7 @@ def test_long_voice_is_rejected_before_transcription() -> None:
     )
 
     assert result is not None
-    assert result.outcome == VoiceReminderOutcome.TOO_LONG
+    assert result.outcome == VoiceReminderOutcomeEnum.TOO_LONG
 
 
 @pytest.mark.asyncio
@@ -183,8 +183,8 @@ async def test_voice_does_not_satisfy_pending_edit_time_draft() -> None:
     pending_edit_draft = Draft(
         id=1,
         user_id=10,
-        type=DraftType.REMINDER_EDIT_TIME,
-        status=DraftStatus.PENDING,
+        type=DraftTypeEnum.REMINDER_EDIT_TIME,
+        status=DraftStatusEnum.PENDING,
         input_text="",
         payload=edit_time_payload(
             reminder_id=1,
@@ -209,7 +209,7 @@ async def test_voice_does_not_satisfy_pending_edit_time_draft() -> None:
     )
 
     assert result is not None
-    assert result.outcome == VoiceReminderOutcome.PENDING_EDIT_TIME
+    assert result.outcome == VoiceReminderOutcomeEnum.PENDING_EDIT_TIME
     assert transcriber.calls == 0
 
 
@@ -224,7 +224,7 @@ async def test_voice_audio_transcription_delegates_to_transcriber() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == VoiceTranscriptionOutcome.TRANSCRIBED
+    assert result.outcome == VoiceTranscriptionOutcomeEnum.TRANSCRIBED
     assert transcriber.calls == 1
 
 
@@ -247,7 +247,7 @@ def test_faster_whisper_transcribe_uses_fast_voice_options() -> None:
 
 def _transcribed(text: str) -> VoiceTranscriptionResult:
     return VoiceTranscriptionResult(
-        outcome=VoiceTranscriptionOutcome.TRANSCRIBED,
+        outcome=VoiceTranscriptionOutcomeEnum.TRANSCRIBED,
         transcript=VoiceTranscript(
             text=text,
             language="ru",

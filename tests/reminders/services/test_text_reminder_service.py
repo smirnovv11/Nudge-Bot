@@ -7,14 +7,19 @@ import pytest
 
 from nudge_bot.common.constants import DRAFT_EXPIRATION_HOURS
 from nudge_bot.config import Settings
-from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderSourceType, ReminderStatus
+from nudge_bot.reminders.enums import (
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ReminderSourceTypeEnum,
+    ReminderStatusEnum,
+)
 from nudge_bot.reminders.services import TextReminderService
 from nudge_bot.reminders.services.intake import (
     SOURCE_METADATA_PAYLOAD_KEY,
     SOURCE_TYPE_PAYLOAD_KEY,
     TIMEZONE_PAYLOAD_KEY,
 )
-from nudge_bot.reminders.services.schemas import TextReminderOutcome
+from nudge_bot.reminders.services.schemas import TextReminderOutcomeEnum
 
 from .fakes import (
     FakeDraftRepository,
@@ -48,11 +53,11 @@ async def test_handle_text_reminder_creates_active_reminder_for_confident_parse(
         settings=SETTINGS,
     )
 
-    assert result.outcome == TextReminderOutcome.CREATED
+    assert result.outcome == TextReminderOutcomeEnum.CREATED
     assert result.reminder is reminders.added[0]
     assert result.reminder.reminder_text == "walk the dog"
-    assert result.reminder.status == ReminderStatus.ACTIVE
-    assert result.reminder.source_type == ReminderSourceType.TEXT
+    assert result.reminder.status == ReminderStatusEnum.ACTIVE
+    assert result.reminder.source_type == ReminderSourceTypeEnum.TEXT
     assert result.reminder.extra == {}
     assert result.reminder.due_at.tzinfo == UTC
     assert result.reminder.due_at.hour == 9
@@ -81,11 +86,11 @@ async def test_handle_text_reminder_creates_pending_draft_for_uncertain_parse() 
         settings=SETTINGS,
     )
 
-    assert result.outcome == TextReminderOutcome.DRAFT
+    assert result.outcome == TextReminderOutcomeEnum.DRAFT
     assert result.reminder is None
     assert result.draft is drafts.added[0]
-    assert result.draft.type == DraftType.REMINDER_CONFIRMATION
-    assert result.draft.status == DraftStatus.PENDING
+    assert result.draft.type == DraftTypeEnum.REMINDER_CONFIRMATION
+    assert result.draft.status == DraftStatusEnum.PENDING
     assert result.draft.input_text == "pick up order tomorrow"
     assert result.draft.parsed_text == "pick up order"
     assert result.draft.parsed_due_at is not None
@@ -93,7 +98,7 @@ async def test_handle_text_reminder_creates_pending_draft_for_uncertain_parse() 
     assert result.draft.parse_confidence is not None
     assert result.draft.payload == {
         TIMEZONE_PAYLOAD_KEY: "Europe/Minsk",
-        SOURCE_TYPE_PAYLOAD_KEY: ReminderSourceType.TEXT.value,
+        SOURCE_TYPE_PAYLOAD_KEY: ReminderSourceTypeEnum.TEXT.value,
         SOURCE_METADATA_PAYLOAD_KEY: {},
     }
     assert result.draft.expires_at == NOW.astimezone(UTC) + timedelta(hours=DRAFT_EXPIRATION_HOURS)
@@ -122,7 +127,7 @@ async def test_handle_text_reminder_falls_back_when_user_timezone_is_invalid() -
         settings=SETTINGS,
     )
 
-    assert result.outcome == TextReminderOutcome.CREATED
+    assert result.outcome == TextReminderOutcomeEnum.CREATED
     assert result.display_timezone == SETTINGS.default_timezone
     assert reminders.added[0].due_at.tzinfo == UTC
 
@@ -143,7 +148,7 @@ async def test_handle_text_reminder_unknown_text_creates_nothing() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == TextReminderOutcome.UNKNOWN
+    assert result.outcome == TextReminderOutcomeEnum.UNKNOWN
     assert result.reminder is None
     assert result.draft is None
     assert reminders.added == []
@@ -166,7 +171,7 @@ async def test_handle_text_reminder_note_marker_creates_nothing() -> None:
         settings=SETTINGS,
     )
 
-    assert result.outcome == TextReminderOutcome.NOTE
+    assert result.outcome == TextReminderOutcomeEnum.NOTE
     assert result.reminder is None
     assert result.draft is None
     assert reminders.added == []

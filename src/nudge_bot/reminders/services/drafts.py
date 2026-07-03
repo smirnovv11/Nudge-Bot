@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from nudge_bot.reminders.enums import (
-    DraftStatus,
-    ReminderSourceType,
-    ReminderStatus,
-    ReminderType,
+    DraftStatusEnum,
+    ReminderSourceTypeEnum,
+    ReminderStatusEnum,
+    ReminderTypeEnum,
 )
 from nudge_bot.reminders.services.intake import SOURCE_METADATA_PAYLOAD_KEY, SOURCE_TYPE_PAYLOAD_KEY
-from nudge_bot.reminders.services.schemas import DraftActionOutcome, DraftActionResult
+from nudge_bot.reminders.services.schemas import DraftActionOutcomeEnum, DraftActionResult
 from nudge_bot.reminders.services.time import draft_display_timezone, is_expired, to_utc
 from nudge_bot.storage.models import Draft, Reminder
 from nudge_bot.storage.unit_of_work import UnitOfWork
@@ -41,11 +41,11 @@ class DraftFlowService:
 
         display_timezone = draft_display_timezone(draft)
         if to_utc(draft.parsed_due_at) <= now_utc:
-            draft.status = DraftStatus.EXPIRED
+            draft.status = DraftStatusEnum.EXPIRED
             draft.updated_at = now_utc
             await uow.session.flush()
             return DraftActionResult(
-                outcome=DraftActionOutcome.EXPIRED,
+                outcome=DraftActionOutcomeEnum.EXPIRED,
                 draft=draft,
                 changed=True,
                 display_timezone=display_timezone,
@@ -55,20 +55,20 @@ class DraftFlowService:
         source_metadata = _draft_source_metadata(draft)
         reminder = Reminder(
             user_id=user_id,
-            type=ReminderType.ONE_OFF,
-            status=ReminderStatus.ACTIVE,
+            type=ReminderTypeEnum.ONE_OFF,
+            status=ReminderStatusEnum.ACTIVE,
             reminder_text=draft.parsed_text,
             due_at=draft.parsed_due_at,
             source_type=source_type,
             extra=source_metadata,
         )
         uow.reminders.add(reminder)
-        draft.status = DraftStatus.CONFIRMED
+        draft.status = DraftStatusEnum.CONFIRMED
         draft.updated_at = now_utc
         await uow.session.flush()
 
         return DraftActionResult(
-            outcome=DraftActionOutcome.CONFIRMED,
+            outcome=DraftActionOutcomeEnum.CONFIRMED,
             draft=draft,
             changed=True,
             display_timezone=display_timezone,
@@ -95,12 +95,12 @@ class DraftFlowService:
         if existing_result is not None:
             return existing_result
 
-        draft.status = DraftStatus.CANCELLED
+        draft.status = DraftStatusEnum.CANCELLED
         draft.updated_at = now_utc
         await uow.session.flush()
 
         return DraftActionResult(
-            outcome=DraftActionOutcome.CANCELLED,
+            outcome=DraftActionOutcomeEnum.CANCELLED,
             draft=draft,
             changed=True,
             display_timezone=draft_display_timezone(draft),
@@ -114,33 +114,33 @@ async def _inactive_draft_result(
 ) -> DraftActionResult | None:
     display_timezone = draft_display_timezone(draft)
 
-    if draft.status == DraftStatus.CONFIRMED:
+    if draft.status == DraftStatusEnum.CONFIRMED:
         return DraftActionResult(
-            outcome=DraftActionOutcome.ALREADY_CONFIRMED,
+            outcome=DraftActionOutcomeEnum.ALREADY_CONFIRMED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
         )
-    if draft.status == DraftStatus.CANCELLED:
+    if draft.status == DraftStatusEnum.CANCELLED:
         return DraftActionResult(
-            outcome=DraftActionOutcome.ALREADY_CANCELLED,
+            outcome=DraftActionOutcomeEnum.ALREADY_CANCELLED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
         )
-    if draft.status == DraftStatus.EXPIRED:
+    if draft.status == DraftStatusEnum.EXPIRED:
         return DraftActionResult(
-            outcome=DraftActionOutcome.EXPIRED,
+            outcome=DraftActionOutcomeEnum.EXPIRED,
             draft=draft,
             changed=False,
             display_timezone=display_timezone,
         )
     if is_expired(draft, now_utc):
-        draft.status = DraftStatus.EXPIRED
+        draft.status = DraftStatusEnum.EXPIRED
         draft.updated_at = now_utc
         await uow.session.flush()
         return DraftActionResult(
-            outcome=DraftActionOutcome.EXPIRED,
+            outcome=DraftActionOutcomeEnum.EXPIRED,
             draft=draft,
             changed=True,
             display_timezone=display_timezone,
@@ -149,14 +149,14 @@ async def _inactive_draft_result(
     return None
 
 
-def _draft_source_type(draft: Draft) -> ReminderSourceType:
+def _draft_source_type(draft: Draft) -> ReminderSourceTypeEnum:
     raw_source_type = draft.payload.get(SOURCE_TYPE_PAYLOAD_KEY)
     if isinstance(raw_source_type, str):
         try:
-            return ReminderSourceType(raw_source_type)
+            return ReminderSourceTypeEnum(raw_source_type)
         except ValueError:
-            return ReminderSourceType.TEXT
-    return ReminderSourceType.TEXT
+            return ReminderSourceTypeEnum.TEXT
+    return ReminderSourceTypeEnum.TEXT
 
 
 def _draft_source_metadata(draft: Draft) -> dict[str, object]:

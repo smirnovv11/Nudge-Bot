@@ -20,14 +20,14 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES, DEFAULT_TIMEZONE
 from nudge_bot.reminders.enums import (
-    CallbackAction,
-    CallbackEventStatus,
-    DraftStatus,
-    DraftType,
-    ReminderDeliveryStatus,
-    ReminderSourceType,
-    ReminderStatus,
-    ReminderType,
+    CallbackActionEnum,
+    CallbackEventStatusEnum,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ReminderDeliveryStatusEnum,
+    ReminderSourceTypeEnum,
+    ReminderStatusEnum,
+    ReminderTypeEnum,
 )
 
 
@@ -127,21 +127,21 @@ class Reminder(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    type: Mapped[ReminderType] = mapped_column(
-        postgres_enum(ReminderType, "reminder_type"),
-        default=ReminderType.ONE_OFF,
+    type: Mapped[ReminderTypeEnum] = mapped_column(
+        postgres_enum(ReminderTypeEnum, "reminder_type"),
+        default=ReminderTypeEnum.ONE_OFF,
         nullable=False,
     )
-    status: Mapped[ReminderStatus] = mapped_column(
-        postgres_enum(ReminderStatus, "reminder_status"),
-        default=ReminderStatus.ACTIVE,
+    status: Mapped[ReminderStatusEnum] = mapped_column(
+        postgres_enum(ReminderStatusEnum, "reminder_status"),
+        default=ReminderStatusEnum.ACTIVE,
         nullable=False,
     )
     reminder_text: Mapped[str] = mapped_column(Text, nullable=False)
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    source_type: Mapped[ReminderSourceType] = mapped_column(
-        postgres_enum(ReminderSourceType, "reminder_source_type"),
-        default=ReminderSourceType.TEXT,
+    source_type: Mapped[ReminderSourceTypeEnum] = mapped_column(
+        postgres_enum(ReminderSourceTypeEnum, "reminder_source_type"),
+        default=ReminderSourceTypeEnum.TEXT,
         nullable=False,
     )
     extra: Mapped[dict[str, Any]] = mapped_column(
@@ -187,9 +187,9 @@ class ReminderAttempt(TimestampMixin, Base):
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
-    delivery_status: Mapped[ReminderDeliveryStatus] = mapped_column(
-        postgres_enum(ReminderDeliveryStatus, "reminder_delivery_status"),
-        default=ReminderDeliveryStatus.PENDING,
+    delivery_status: Mapped[ReminderDeliveryStatusEnum] = mapped_column(
+        postgres_enum(ReminderDeliveryStatusEnum, "reminder_delivery_status"),
+        default=ReminderDeliveryStatusEnum.PENDING,
         nullable=False,
     )
     error_code: Mapped[str | None] = mapped_column(Text)
@@ -226,13 +226,13 @@ class Draft(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    type: Mapped[DraftType] = mapped_column(
-        postgres_enum(DraftType, "draft_type"),
+    type: Mapped[DraftTypeEnum] = mapped_column(
+        postgres_enum(DraftTypeEnum, "draft_type"),
         nullable=False,
     )
-    status: Mapped[DraftStatus] = mapped_column(
-        postgres_enum(DraftStatus, "draft_status"),
-        default=DraftStatus.PENDING,
+    status: Mapped[DraftStatusEnum] = mapped_column(
+        postgres_enum(DraftStatusEnum, "draft_status"),
+        default=DraftStatusEnum.PENDING,
         nullable=False,
     )
     input_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -265,13 +265,13 @@ class CallbackEvent(TimestampMixin, Base):
     )
     reminder_id: Mapped[int | None] = mapped_column(ForeignKey("reminders.id", ondelete="CASCADE"))
     callback_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    action: Mapped[CallbackAction] = mapped_column(
-        postgres_enum(CallbackAction, "callback_action"),
+    action: Mapped[CallbackActionEnum] = mapped_column(
+        postgres_enum(CallbackActionEnum, "callback_action"),
         nullable=False,
     )
-    status: Mapped[CallbackEventStatus] = mapped_column(
-        postgres_enum(CallbackEventStatus, "callback_event_status"),
-        default=CallbackEventStatus.RECEIVED,
+    status: Mapped[CallbackEventStatusEnum] = mapped_column(
+        postgres_enum(CallbackEventStatusEnum, "callback_event_status"),
+        default=CallbackEventStatusEnum.RECEIVED,
         nullable=False,
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

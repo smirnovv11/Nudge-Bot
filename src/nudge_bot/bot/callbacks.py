@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from aiogram.filters.callback_data import CallbackData
 
-from nudge_bot.reminders.enums import CallbackAction
+from nudge_bot.reminders.enums import CallbackActionEnum
 
 
 class ReminderActionCallback(CallbackData, prefix="rem"):
-    action: CallbackAction
+    action: CallbackActionEnum
     reminder_id: int
     notification_id: int | None = None
 
 
 class ReminderDraftCallback(CallbackData, prefix="draft"):
-    action: CallbackAction
+    action: CallbackActionEnum
     draft_id: int

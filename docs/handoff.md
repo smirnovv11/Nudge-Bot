@@ -127,7 +127,7 @@ This session implemented, reviewed, and lightly stabilized the text-based `Choos
 What changed:
 
 - `Choose time` is no longer a placeholder. Pressing it sends a normal chat message asking for a new time, with a `Cancel` button.
-- The edit state is durable: `ReminderEditTimeService` creates or reuses a pending `DraftType.REMINDER_EDIT_TIME` draft.
+- The edit state is durable: `ReminderEditTimeService` creates or reuses a pending `DraftTypeEnum.REMINDER_EDIT_TIME` draft.
 - The next user text message is parsed through the existing `parse_reminder_text` path, but only `due_at` is applied. `reminder_text` stays unchanged.
 - Successful edit-time application moves the same reminder to `snoozed` at the chosen UTC due time.
 - Cancelling closes the edit-time draft and deletes only the prompt message, leaving the original fired reminder message intact.
@@ -166,7 +166,7 @@ Voice input added:
 - Voice transcription is warmed at bot startup when possible and uses fast single-beam decoding, no timestamps, no previous-text conditioning, and VAD filtering.
 - The bot immediately sends `Transcribing...` for accepted voice/audio messages, then edits that message with the final reminder result.
 - Transcripts are routed through the shared reminder intake path. Confident parses create reminders directly; uncertain parses create confirmation drafts.
-- Voice-created reminders and confirmed voice drafts use `ReminderSourceType.VOICE`.
+- Voice-created reminders and confirmed voice drafts use `ReminderSourceTypeEnum.VOICE`.
 - Voice metadata is stored in JSON metadata/payload without raw audio or duplicate transcript text: language, duration, model, Telegram `file_unique_id`, and MIME type.
 - Voice messages do not satisfy pending `Choose time` edit drafts; the bot asks the user to send the new time as text or press `Cancel`.
 - Auto-repeat cleanup now uses the previous successful `reminder_attempts.telegram_message_id`: after sending a timeout repeat for a reminder that was already `sent`, the worker deletes the previous fired message, or removes its inline keyboard if deletion fails.
