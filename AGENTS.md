@@ -44,4 +44,6 @@ Avoid magic numbers and duplicated default values. Shared product and runtime de
 
 Avoid magic string values for bounded domain or service states. If a value can be an enum, define and reuse an explicit enum-like type, preferably `StrEnum`, or another typed vocabulary such as a small dataclass-backed result contract when that better fits the code. Outcomes, statuses, actions, draft types, source types, and parser intents should not be checked through ad hoc strings such as `if result.outcome == "note"`.
 
+Name enum classes with an `Enum` suffix, such as `ReminderStatusEnum` or `TextReminderOutcomeEnum`, so enum vocabularies are immediately recognizable at call sites.
+
 Separate logical blocks of code with a blank line for readability.

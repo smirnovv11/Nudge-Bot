@@ -3,11 +3,11 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class ReminderType(StrEnum):
+class ReminderTypeEnum(StrEnum):
     ONE_OFF = "one_off"
 
 
-class ReminderStatus(StrEnum):
+class ReminderStatusEnum(StrEnum):
     ACTIVE = "active"
     SENDING = "sending"
     SENT = "sent"
@@ -16,19 +16,19 @@ class ReminderStatus(StrEnum):
     ARCHIVED = "archived"
 
 
-class ReminderSourceType(StrEnum):
+class ReminderSourceTypeEnum(StrEnum):
     TEXT = "text"
     VOICE = "voice"
     MANUAL = "manual"
 
 
-class ParserIntent(StrEnum):
+class ParserIntentEnum(StrEnum):
     REMINDER = "reminder"
     NOTE = "note"
     UNKNOWN = "unknown"
 
 
-class ReminderDeliveryStatus(StrEnum):
+class ReminderDeliveryStatusEnum(StrEnum):
     PENDING = "pending"
     SENDING = "sending"
     SENT = "sent"
@@ -36,21 +36,21 @@ class ReminderDeliveryStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
-class DraftType(StrEnum):
+class DraftTypeEnum(StrEnum):
     REMINDER_CONFIRMATION = "reminder_confirmation"
     REMINDER_EDIT_TIME = "reminder_edit_time"
     REMINDER_EDIT_TEXT = "reminder_edit_text"
     NOTE_CAPTURE = "note_capture"
 
 
-class DraftStatus(StrEnum):
+class DraftStatusEnum(StrEnum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
 
 
-class CallbackAction(StrEnum):
+class CallbackActionEnum(StrEnum):
     READ = "read"
     REPEAT = "repeat"
     CHOOSE_TIME = "choose_time"
@@ -60,7 +60,7 @@ class CallbackAction(StrEnum):
     CANCEL = "cancel"
 
 
-class CallbackEventStatus(StrEnum):
+class CallbackEventStatusEnum(StrEnum):
     RECEIVED = "received"
     PROCESSED = "processed"
     IGNORED = "ignored"

@@ -10,7 +10,7 @@ from aiogram.exceptions import AiogramError
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.domain import ReminderToSend
-from nudge_bot.reminders.enums import ReminderStatus
+from nudge_bot.reminders.enums import ReminderStatusEnum
 from nudge_bot.worker import main as worker_main
 from tests.reminders.services.fakes import FakeReminder, FakeReminderRepository, FakeUnitOfWork
 
@@ -100,7 +100,7 @@ async def test_worker_tick_sends_claimed_reminder(monkeypatch: pytest.MonkeyPatc
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SENDING,
+        status=ReminderStatusEnum.SENDING,
         due_at=now,
         locked_at=now,
     )
@@ -128,7 +128,7 @@ async def test_worker_tick_sends_claimed_reminder(monkeypatch: pytest.MonkeyPatc
     assert bot.sent_messages[0]["chat_id"] == 100
     assert bot.sent_messages[0]["text"] == "⏰ <i>Reminder</i>\n\n📨 walk the dog"
     assert bot.sent_messages[0]["parse_mode"] == "HTML"
-    assert reminder.status == ReminderStatus.SENT
+    assert reminder.status == ReminderStatusEnum.SENT
     assert delivery_uow.reminders.mark_delivery_sent_called_with is not None
     assert (
         delivery_uow.reminders.mark_delivery_sent_called_with["repeat_interval_minutes"]
@@ -152,7 +152,7 @@ async def test_worker_tick_records_send_failure(monkeypatch: pytest.MonkeyPatch)
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SENDING,
+        status=ReminderStatusEnum.SENDING,
         due_at=now,
         locked_at=now,
     )
@@ -176,7 +176,7 @@ async def test_worker_tick_records_send_failure(monkeypatch: pytest.MonkeyPatch)
     )
 
     assert delivered == 1
-    assert reminder.status == ReminderStatus.ACTIVE
+    assert reminder.status == ReminderStatusEnum.ACTIVE
     assert delivery_uow.attempts.attempts[0].error_code == "AiogramError"
 
 
@@ -198,7 +198,7 @@ async def test_worker_tick_deletes_previous_message_after_auto_repeat(
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SENDING,
+        status=ReminderStatusEnum.SENDING,
         due_at=now,
         locked_at=now,
     )
@@ -257,14 +257,14 @@ async def test_worker_tick_deletes_each_previous_message_for_multiple_auto_repea
         1: FakeReminder(
             id=1,
             user_id=10,
-            status=ReminderStatus.SENDING,
+            status=ReminderStatusEnum.SENDING,
             due_at=now,
             locked_at=now,
         ),
         2: FakeReminder(
             id=2,
             user_id=10,
-            status=ReminderStatus.SENDING,
+            status=ReminderStatusEnum.SENDING,
             due_at=now,
             locked_at=now,
         ),
@@ -326,7 +326,7 @@ async def test_worker_tick_removes_old_keyboard_when_previous_delete_fails(
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SENDING,
+        status=ReminderStatusEnum.SENDING,
         due_at=now,
         locked_at=now,
     )

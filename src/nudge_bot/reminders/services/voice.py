@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Protocol
 
 from nudge_bot.config import Settings
-from nudge_bot.reminders.enums import DraftStatus, DraftType, ReminderSourceType
+from nudge_bot.reminders.enums import DraftStatusEnum, DraftTypeEnum, ReminderSourceTypeEnum
 from nudge_bot.reminders.services.intake import ReminderIntakeService
 from nudge_bot.reminders.services.schemas import (
-    VoiceReminderOutcome,
+    VoiceReminderOutcomeEnum,
     VoiceReminderResult,
     VoiceTranscript,
-    VoiceTranscriptionOutcome,
+    VoiceTranscriptionOutcomeEnum,
     VoiceTranscriptionResult,
 )
 from nudge_bot.reminders.services.time import is_expired, to_utc
@@ -66,16 +66,16 @@ class FasterWhisperTranscriber:
             )
         except Exception as exc:
             return VoiceTranscriptionResult(
-                outcome=VoiceTranscriptionOutcome.FAILED,
+                outcome=VoiceTranscriptionOutcomeEnum.FAILED,
                 error_message=str(exc),
             )
 
         normalized_text = text.strip()
         if not normalized_text:
-            return VoiceTranscriptionResult(outcome=VoiceTranscriptionOutcome.EMPTY)
+            return VoiceTranscriptionResult(outcome=VoiceTranscriptionOutcomeEnum.EMPTY)
 
         return VoiceTranscriptionResult(
-            outcome=VoiceTranscriptionOutcome.TRANSCRIBED,
+            outcome=VoiceTranscriptionOutcomeEnum.TRANSCRIBED,
             transcript=VoiceTranscript(
                 text=normalized_text,
                 language=language,
@@ -127,11 +127,11 @@ class VoiceReminderService:
     ) -> VoiceReminderResult | None:
         max_voice_bytes = settings.voice_max_file_size_mb * BYTES_PER_MEGABYTE
         if file_size is not None and file_size > max_voice_bytes:
-            return VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE)
+            return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TOO_LARGE)
         if audio is not None and len(audio) > max_voice_bytes:
-            return VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LARGE)
+            return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TOO_LARGE)
         if duration_seconds is not None and duration_seconds > settings.voice_max_duration_seconds:
-            return VoiceReminderResult(outcome=VoiceReminderOutcome.TOO_LONG)
+            return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TOO_LONG)
 
         return None
 
@@ -154,16 +154,16 @@ class VoiceReminderService:
         )
         pending_edit_draft = await uow.drafts.get_pending_by_type_for_user(
             user_id=user.id,
-            draft_type=DraftType.REMINDER_EDIT_TIME,
+            draft_type=DraftTypeEnum.REMINDER_EDIT_TIME,
         )
         if pending_edit_draft is not None:
             now_utc = to_utc(now)
             if is_expired(pending_edit_draft, now_utc):
-                pending_edit_draft.status = DraftStatus.EXPIRED
+                pending_edit_draft.status = DraftStatusEnum.EXPIRED
                 pending_edit_draft.updated_at = now_utc
                 await uow.session.flush()
             else:
-                return VoiceReminderResult(outcome=VoiceReminderOutcome.PENDING_EDIT_TIME)
+                return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.PENDING_EDIT_TIME)
 
         return None
 
@@ -205,15 +205,15 @@ class VoiceReminderService:
         if pending_edit_result is not None:
             return pending_edit_result
 
-        if transcription.outcome == VoiceTranscriptionOutcome.EMPTY:
-            return VoiceReminderResult(outcome=VoiceReminderOutcome.EMPTY_TRANSCRIPT)
-        if transcription.outcome != VoiceTranscriptionOutcome.TRANSCRIBED:
+        if transcription.outcome == VoiceTranscriptionOutcomeEnum.EMPTY:
+            return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.EMPTY_TRANSCRIPT)
+        if transcription.outcome != VoiceTranscriptionOutcomeEnum.TRANSCRIBED:
             return VoiceReminderResult(
-                outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED,
+                outcome=VoiceReminderOutcomeEnum.TRANSCRIPTION_FAILED,
                 error_message=transcription.error_message,
             )
         if transcription.transcript is None:
-            return VoiceReminderResult(outcome=VoiceReminderOutcome.TRANSCRIPTION_FAILED)
+            return VoiceReminderResult(outcome=VoiceReminderOutcomeEnum.TRANSCRIPTION_FAILED)
 
         metadata = {
             "language": transcription.transcript.language,
@@ -229,13 +229,13 @@ class VoiceReminderService:
             username=username,
             locale=locale,
             text=transcription.transcript.text,
-            source_type=ReminderSourceType.VOICE,
+            source_type=ReminderSourceTypeEnum.VOICE,
             source_metadata=metadata,
             now=now,
             settings=settings,
         )
         return VoiceReminderResult(
-            outcome=VoiceReminderOutcome.PROCESSED,
+            outcome=VoiceReminderOutcomeEnum.PROCESSED,
             text_result=text_result,
         )
 

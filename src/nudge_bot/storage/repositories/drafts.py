@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nudge_bot.reminders.enums import DraftStatus, DraftType
+from nudge_bot.reminders.enums import DraftStatusEnum, DraftTypeEnum
 from nudge_bot.storage.models import Draft
 
 
@@ -14,7 +14,7 @@ class DraftRepository:
     async def get_pending_for_user(self, user_id: int) -> Draft | None:
         return await self._session.scalar(
             select(Draft)
-            .where(Draft.user_id == user_id, Draft.status == DraftStatus.PENDING)
+            .where(Draft.user_id == user_id, Draft.status == DraftStatusEnum.PENDING)
             .order_by(Draft.created_at.desc())
             .limit(1)
         )
@@ -23,14 +23,14 @@ class DraftRepository:
         self,
         *,
         user_id: int,
-        draft_type: DraftType,
+        draft_type: DraftTypeEnum,
     ) -> Draft | None:
         return await self._session.scalar(
             select(Draft)
             .where(
                 Draft.user_id == user_id,
                 Draft.type == draft_type,
-                Draft.status == DraftStatus.PENDING,
+                Draft.status == DraftStatusEnum.PENDING,
             )
             .order_by(Draft.created_at.desc())
             .limit(1)
@@ -40,14 +40,14 @@ class DraftRepository:
         self,
         *,
         user_id: int,
-        draft_type: DraftType,
+        draft_type: DraftTypeEnum,
     ) -> Draft | None:
         return await self._session.scalar(
             select(Draft)
             .where(
                 Draft.user_id == user_id,
                 Draft.type == draft_type,
-                Draft.status == DraftStatus.PENDING,
+                Draft.status == DraftStatusEnum.PENDING,
             )
             .order_by(Draft.created_at.desc())
             .limit(1)

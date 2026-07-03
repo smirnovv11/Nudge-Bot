@@ -5,11 +5,11 @@ from datetime import datetime, timedelta
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
 from nudge_bot.reminders.enums import (
-    CallbackEventStatus,
-    DraftStatus,
-    DraftType,
-    ReminderDeliveryStatus,
-    ReminderStatus,
+    CallbackEventStatusEnum,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ReminderDeliveryStatusEnum,
+    ReminderStatusEnum,
 )
 from nudge_bot.storage.models import Draft
 
@@ -18,7 +18,7 @@ from nudge_bot.storage.models import Draft
 class FakeReminder:
     id: int
     user_id: int
-    status: ReminderStatus
+    status: ReminderStatusEnum
     due_at: datetime
     completed_at: datetime | None = None
     locked_at: datetime | None = None
@@ -30,7 +30,7 @@ class FakeReminderAttempt:
     reminder_id: int
     attempt_no: int
     scheduled_for: datetime
-    delivery_status: ReminderDeliveryStatus
+    delivery_status: ReminderDeliveryStatusEnum
     sent_at: datetime | None = None
     telegram_message_id: int | None = None
     error_code: str | None = None
@@ -44,7 +44,7 @@ class FakeCallbackEvent:
     reminder_id: int | None
     callback_key: str
     action: object
-    status: CallbackEventStatus
+    status: CallbackEventStatusEnum
     processed_at: datetime | None = None
 
 
@@ -118,9 +118,9 @@ class FakeReminderRepository:
         if (
             self.reminder is not None
             and self.reminder.id == reminder_id
-            and self.reminder.status == ReminderStatus.SENDING
+            and self.reminder.status == ReminderStatusEnum.SENDING
         ):
-            self.reminder.status = ReminderStatus.SENT
+            self.reminder.status = ReminderStatusEnum.SENT
             self.reminder.due_at = now + timedelta(minutes=repeat_interval_minutes)
             self.reminder.locked_at = None
 
@@ -129,9 +129,9 @@ class FakeReminderRepository:
         if (
             self.reminder is not None
             and self.reminder.id == reminder_id
-            and self.reminder.status == ReminderStatus.SENDING
+            and self.reminder.status == ReminderStatusEnum.SENDING
         ):
-            self.reminder.status = ReminderStatus.ACTIVE
+            self.reminder.status = ReminderStatusEnum.ACTIVE
             self.reminder.locked_at = None
 
 
@@ -150,7 +150,7 @@ class FakeReminderAttemptRepository:
             reminder_id=reminder_id,
             attempt_no=len(self.attempts) + 1,
             scheduled_for=scheduled_for,
-            delivery_status=ReminderDeliveryStatus.SENDING,
+            delivery_status=ReminderDeliveryStatusEnum.SENDING,
         )
         self.attempts.append(attempt)
         return attempt
@@ -163,7 +163,7 @@ class FakeReminderAttemptRepository:
         sent_at: datetime,
     ) -> None:
         attempt = self.attempts[attempt_id - 1]
-        attempt.delivery_status = ReminderDeliveryStatus.SENT
+        attempt.delivery_status = ReminderDeliveryStatusEnum.SENT
         attempt.telegram_message_id = telegram_message_id
         attempt.sent_at = sent_at
 
@@ -175,7 +175,7 @@ class FakeReminderAttemptRepository:
         error_message: str,
     ) -> None:
         attempt = self.attempts[attempt_id - 1]
-        attempt.delivery_status = ReminderDeliveryStatus.FAILED
+        attempt.delivery_status = ReminderDeliveryStatusEnum.FAILED
         attempt.error_code = error_code
         attempt.error_message = error_message
 
@@ -197,13 +197,13 @@ class FakeDraftRepository:
         self,
         *,
         user_id: int,
-        draft_type: DraftType,
+        draft_type: DraftTypeEnum,
     ) -> Draft | None:
         for draft in self.drafts:
             if (
                 draft.user_id == user_id
                 and draft.type == draft_type
-                and draft.status == DraftStatus.PENDING
+                and draft.status == DraftStatusEnum.PENDING
             ):
                 return draft
         return None
@@ -212,7 +212,7 @@ class FakeDraftRepository:
         self,
         *,
         user_id: int,
-        draft_type: DraftType,
+        draft_type: DraftTypeEnum,
     ) -> Draft | None:
         self.locked_lookup_called = True
         return await self.get_pending_by_type_for_user(user_id=user_id, draft_type=draft_type)

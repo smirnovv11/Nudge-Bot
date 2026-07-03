@@ -6,15 +6,15 @@ from typing import Any
 from nudge_bot.common.constants import DRAFT_EXPIRATION_HOURS
 from nudge_bot.config import Settings
 from nudge_bot.reminders.enums import (
-    DraftStatus,
-    DraftType,
-    ParserIntent,
-    ReminderSourceType,
-    ReminderStatus,
-    ReminderType,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ParserIntentEnum,
+    ReminderSourceTypeEnum,
+    ReminderStatusEnum,
+    ReminderTypeEnum,
 )
 from nudge_bot.reminders.parser import ParsedReminderDraft, parse_reminder_text
-from nudge_bot.reminders.services.schemas import TextReminderOutcome, TextReminderResult
+from nudge_bot.reminders.services.schemas import TextReminderOutcomeEnum, TextReminderResult
 from nudge_bot.reminders.services.time import safe_timezone, to_utc
 from nudge_bot.storage.models import Draft, Reminder
 from nudge_bot.storage.unit_of_work import UnitOfWork
@@ -33,7 +33,7 @@ class ReminderIntakeService:
         username: str | None,
         locale: str | None,
         text: str,
-        source_type: ReminderSourceType,
+        source_type: ReminderSourceTypeEnum,
         source_metadata: dict[str, Any] | None = None,
         now: datetime,
         settings: Settings,
@@ -53,9 +53,9 @@ class ReminderIntakeService:
         parsed = parse_reminder_text(text, now=now.astimezone(zone), timezone=timezone)
         metadata = dict(source_metadata or {})
 
-        if parsed.intent_kind == ParserIntent.NOTE:
+        if parsed.intent_kind == ParserIntentEnum.NOTE:
             return TextReminderResult(
-                outcome=TextReminderOutcome.NOTE,
+                outcome=TextReminderOutcomeEnum.NOTE,
                 user_id=user.id,
                 parsed=parsed,
                 display_timezone=timezone,
@@ -63,7 +63,7 @@ class ReminderIntakeService:
 
         if parsed.due_at is None or parsed.reminder_text is None:
             return TextReminderResult(
-                outcome=TextReminderOutcome.UNKNOWN,
+                outcome=TextReminderOutcomeEnum.UNKNOWN,
                 user_id=user.id,
                 parsed=parsed,
                 display_timezone=timezone,
@@ -72,8 +72,8 @@ class ReminderIntakeService:
         if parsed.needs_confirmation:
             draft = Draft(
                 user_id=user.id,
-                type=DraftType.REMINDER_CONFIRMATION,
-                status=DraftStatus.PENDING,
+                type=DraftTypeEnum.REMINDER_CONFIRMATION,
+                status=DraftStatusEnum.PENDING,
                 input_text=parsed.input_text,
                 parsed_text=parsed.reminder_text,
                 parsed_due_at=to_utc(parsed.due_at),
@@ -88,7 +88,7 @@ class ReminderIntakeService:
             uow.drafts.add(draft)
             await uow.session.flush()
             return TextReminderResult(
-                outcome=TextReminderOutcome.DRAFT,
+                outcome=TextReminderOutcomeEnum.DRAFT,
                 user_id=user.id,
                 parsed=parsed,
                 display_timezone=timezone,
@@ -104,7 +104,7 @@ class ReminderIntakeService:
         uow.reminders.add(reminder)
         await uow.session.flush()
         return TextReminderResult(
-            outcome=TextReminderOutcome.CREATED,
+            outcome=TextReminderOutcomeEnum.CREATED,
             user_id=user.id,
             parsed=parsed,
             display_timezone=timezone,
@@ -133,7 +133,7 @@ class TextReminderService:
             username=username,
             locale=locale,
             text=text,
-            source_type=ReminderSourceType.TEXT,
+            source_type=ReminderSourceTypeEnum.TEXT,
             source_metadata={},
             now=now,
             settings=settings,
@@ -144,7 +144,7 @@ def reminder_from_parsed(
     *,
     user_id: int,
     parsed: ParsedReminderDraft,
-    source_type: ReminderSourceType,
+    source_type: ReminderSourceTypeEnum,
     source_metadata: dict[str, Any] | None = None,
 ) -> Reminder:
     if parsed.reminder_text is None or parsed.due_at is None:
@@ -152,8 +152,8 @@ def reminder_from_parsed(
 
     return Reminder(
         user_id=user_id,
-        type=ReminderType.ONE_OFF,
-        status=ReminderStatus.ACTIVE,
+        type=ReminderTypeEnum.ONE_OFF,
+        status=ReminderStatusEnum.ACTIVE,
         reminder_text=parsed.reminder_text,
         due_at=to_utc(parsed.due_at),
         source_type=source_type,

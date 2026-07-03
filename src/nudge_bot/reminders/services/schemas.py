@@ -7,14 +7,14 @@ from nudge_bot.reminders.parser import ParsedReminderDraft
 from nudge_bot.storage.models import Draft, Reminder
 
 
-class TextReminderOutcome(StrEnum):
+class TextReminderOutcomeEnum(StrEnum):
     CREATED = "created"
     DRAFT = "draft"
     UNKNOWN = "unknown"
     NOTE = "note"
 
 
-class DraftActionOutcome(StrEnum):
+class DraftActionOutcomeEnum(StrEnum):
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     ALREADY_CONFIRMED = "already_confirmed"
@@ -22,7 +22,7 @@ class DraftActionOutcome(StrEnum):
     EXPIRED = "expired"
 
 
-class EditTimeOutcome(StrEnum):
+class EditTimeOutcomeEnum(StrEnum):
     AWAITING_INPUT = "awaiting_input"
     RESCHEDULED = "rescheduled"
     UNKNOWN = "unknown"
@@ -32,7 +32,7 @@ class EditTimeOutcome(StrEnum):
     NO_PENDING_DRAFT = "no_pending_draft"
 
 
-class VoiceTranscriptionOutcome(StrEnum):
+class VoiceTranscriptionOutcomeEnum(StrEnum):
     TRANSCRIBED = "transcribed"
     EMPTY = "empty"
     FAILED = "failed"
@@ -40,7 +40,7 @@ class VoiceTranscriptionOutcome(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
-class VoiceReminderOutcome(StrEnum):
+class VoiceReminderOutcomeEnum(StrEnum):
     PROCESSED = "processed"
     EMPTY_TRANSCRIPT = "empty_transcript"
     TRANSCRIPTION_FAILED = "transcription_failed"
@@ -52,7 +52,7 @@ class VoiceReminderOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class TextReminderResult:
-    outcome: TextReminderOutcome
+    outcome: TextReminderOutcomeEnum
     user_id: int
     parsed: ParsedReminderDraft
     display_timezone: str
@@ -62,7 +62,7 @@ class TextReminderResult:
 
 @dataclass(frozen=True)
 class DraftActionResult:
-    outcome: DraftActionOutcome
+    outcome: DraftActionOutcomeEnum
     draft: Draft
     changed: bool
     display_timezone: str | None = None
@@ -71,7 +71,7 @@ class DraftActionResult:
 
 @dataclass(frozen=True)
 class EditTimeResult:
-    outcome: EditTimeOutcome
+    outcome: EditTimeOutcomeEnum
     changed: bool
     display_timezone: str | None = None
     reminder: Reminder | None = None
@@ -90,13 +90,13 @@ class VoiceTranscript:
 
 @dataclass(frozen=True)
 class VoiceTranscriptionResult:
-    outcome: VoiceTranscriptionOutcome
+    outcome: VoiceTranscriptionOutcomeEnum
     transcript: VoiceTranscript | None = None
     error_message: str | None = None
 
 
 @dataclass(frozen=True)
 class VoiceReminderResult:
-    outcome: VoiceReminderOutcome
+    outcome: VoiceReminderOutcomeEnum
     text_result: TextReminderResult | None = None
     error_message: str | None = None

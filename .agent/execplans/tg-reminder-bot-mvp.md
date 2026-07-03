@@ -43,6 +43,8 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
 - [x] (2026-06-28 22:15Z) Ran post-voice validation through the existing `.venv`: pytest passed with 80 tests, Ruff lint passed, and Ruff format check passed. `uv run pytest` is blocked until `uv.lock` can be updated with network access for `faster-whisper`.
 - [x] (2026-06-30 00:00Z) Optimized the local Whisper voice path for MVP responsiveness: default model changed from `small` to `base`, voice duration is capped at 15 seconds, transcription warms at bot startup, fast single-beam/VAD options are used, and accepted voice messages immediately show `Transcribing...`.
 - [x] (2026-06-30 00:00Z) Reduced auto-repeat notification spam: when a timeout repeat is sent for an already `sent` reminder, the worker uses the previous successful Telegram message id from `reminder_attempts` to delete the older fired message, falling back to removing the old inline keyboard if deletion fails.
+- [x] (2026-07-03 00:00Z) Implemented user menu v1.0 as a secondary inline navigation surface: `/menu` opens settings, active reminders, task history, completed/read reminders from the last 90 days, a new-reminder prompt, and help without changing the one-message creation flow.
+- [x] (2026-07-03 00:00Z) Anchored menu access near the Telegram text input with a persistent two-column reply-keyboard panel installed by `/start` and `/menu`, while keeping deeper settings choices inline.
 
 ## Surprises & Discoveries
 
@@ -193,9 +195,13 @@ The first demonstrable behavior is a private Telegram bot that accepts text remi
   Rationale: Nudge is speed-first. Short reminder commands should either transcribe quickly or ask the user for a shorter voice message instead of making the chat feel stalled.
   Date/Author: 2026-06-30 / User and Codex
 
+- Decision: Keep the user menu as secondary inline navigation with its own non-persisted callback vocabulary.
+  Rationale: Normal reminder creation must remain text/voice-first. Menu actions such as settings and read-only lists are navigation, not reminder lifecycle actions, so they use `MenuCallback` and `MenuActionEnum` instead of expanding the persisted `CallbackActionEnum` or writing `callback_events` rows.
+  Date/Author: 2026-07-03 / Codex
+
 ## Outcomes & Retrospective
 
-The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, a text-based `Choose time` edit flow, and local voice/audio reminder intake. The bot can now create active reminders from confident text or voice parses, create confirmation drafts from uncertain text or voice parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, and automatically re-send delivered reminders after the configured repeat interval when the user does nothing. Timeout repeats now try to remove the previous fired message so the chat keeps one current notification per repeatedly unread reminder.
+The project is no longer only a planning shell. It now has a uv-compatible Python package, bot and worker entrypoints, pydantic settings, Docker Compose infrastructure for PostgreSQL, SQLAlchemy models with explicit PostgreSQL enum mappings, repository classes, a Unit of Work boundary, Alembic migrations for the documented schema, a project-owned parser rule layer, class-based reminder services, MVP draft-flow behavior, aiogram text/draft handlers, worker delivery, fired-reminder callbacks, unattended auto-repeat, a text-based `Choose time` edit flow, local voice/audio reminder intake, and a secondary `/menu` interface. The bot can now create active reminders from confident text or voice parses, create confirmation drafts from uncertain text or voice parses, deliver due reminders, complete delivered reminders with `Read`, snooze them with `Repeat`, ask for a new time through `Choose time`, reschedule the existing reminder from the user's next text message, automatically re-send delivered reminders after the configured repeat interval when the user does nothing, and show settings/history/archive views from the menu. Timeout repeats now try to remove the previous fired message so the chat keeps one current notification per repeatedly unread reminder.
 
 ## Context and Orientation
 
@@ -470,3 +476,7 @@ Revision note: Voice validation on 2026-06-28 used the existing `.venv` because 
 Revision note: Voice performance pass on 2026-06-30 changed the default local model to `base`, added `VOICE_MAX_DURATION_SECONDS`, warmed the local transcriber at bot startup, enabled fast `faster-whisper` transcribe options, and added a `Transcribing...` Telegram progress message.
 
 Revision note: Auto-repeat cleanup added on 2026-06-30. Due claiming now identifies reminders claimed from `sent` status and carries the previous successful Telegram message id, while the worker deletes the previous fired message after the replacement is accepted or removes its inline keyboard if deletion fails.
+
+Revision note: User menu v1.0 added on 2026-07-03. `/menu` now provides secondary inline navigation for settings, active reminders, task history, completed/read reminders from the last 90 days, a new-reminder prompt, and help while preserving text/voice-first reminder creation.
+
+Revision note: Menu access anchored on 2026-07-03. `/start` and `/menu` now install a persistent two-column reply-keyboard panel near the Telegram text input, and the menu router handles those button labels before the reminder text parser can consume them.

@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nudge_bot.reminders.enums import ReminderDeliveryStatus
+from nudge_bot.reminders.enums import ReminderDeliveryStatusEnum
 from nudge_bot.storage.models import ReminderAttempt
 
 
@@ -31,7 +31,7 @@ class ReminderAttemptRepository:
             reminder_id=reminder_id,
             attempt_no=await self.next_attempt_no(reminder_id),
             scheduled_for=scheduled_for,
-            delivery_status=ReminderDeliveryStatus.SENDING,
+            delivery_status=ReminderDeliveryStatusEnum.SENDING,
         )
         self.add(attempt)
         await self._session.flush()
@@ -50,7 +50,7 @@ class ReminderAttemptRepository:
         attempt = await self.get_by_id(attempt_id)
         if attempt is None:
             raise LookupError("reminder delivery attempt not found")
-        attempt.delivery_status = ReminderDeliveryStatus.SENT
+        attempt.delivery_status = ReminderDeliveryStatusEnum.SENT
         attempt.telegram_message_id = telegram_message_id
         attempt.sent_at = sent_at
         attempt.next_retry_at = None
@@ -65,7 +65,7 @@ class ReminderAttemptRepository:
         attempt = await self.get_by_id(attempt_id)
         if attempt is None:
             raise LookupError("reminder delivery attempt not found")
-        attempt.delivery_status = ReminderDeliveryStatus.FAILED
+        attempt.delivery_status = ReminderDeliveryStatusEnum.FAILED
         attempt.error_code = error_code
         attempt.error_message = error_message
         attempt.next_retry_at = None

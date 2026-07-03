@@ -18,7 +18,7 @@ MVP buttons on a fired reminder:
 
 - `Read`: mark the reminder completed/read, stop active repeats, keep history.
 - `Repeat`: repeat after the user's configured short-repeat interval.
-- `Choose time`: currently returns an MVP placeholder; the edit-time state machine is still deferred.
+- `Choose time`: ask for a new time in a normal text message and reschedule the same reminder.
 
 If the user does not press any button, the worker auto-repeats after the configured interval. Default repeat interval is 5 minutes. After a successful timeout repeat, the worker tries to delete the previous fired reminder message so unread repeats do not flood the chat; if Telegram refuses deletion, it falls back to removing the old message keyboard.
 
@@ -120,6 +120,33 @@ Button actions must be idempotent. Repeated presses of `Read` or `Repeat` should
 
 Use `callback_events.callback_key` as a unique logical action key. This supports idempotency and future per-user button rate limiting.
 
+## User Menu v1.0
+
+The bot now has a secondary menu surface. `/start` and `/menu` install a persistent two-column
+reply-keyboard panel near the Telegram text input, similar to Telegram bots that show a bottom menu
+under the composer. It does not replace one-message reminder creation; users can still send text or
+voice directly.
+
+Menu screens:
+
+- `⚙️ Settings`: shows and updates `user_settings.timezone` and `repeat_interval_minutes`.
+- `🌍 Timezone`: preset-only selection for `Europe/Minsk`, `UTC`, `Europe/Warsaw`,
+  `Europe/Moscow`, and `America/New_York`.
+- `🔁 Repeat interval`: preset-only selection for `5`, `10`, `15`, `30`, `60`, and `120` minutes.
+- `📌 Active reminders`: read-only list of up to 10 non-archived reminders in `active`,
+  `snoozed`, or `sent`.
+- `📋 Task history`: read-only list of up to 10 recent non-archived reminders across current and
+  completed statuses.
+- `🗄️ Archive`: read-only list of completed/read reminders from the last 90 days.
+- `✍️ New reminder`: tells the user to send a reminder as text or voice.
+- `ℹ️ Help`: short reminder workflow help.
+
+Inline menu navigation uses `MenuCallback` and `MenuActionEnum` in
+`src/nudge_bot/bot/callbacks.py`. These values are not persisted in `callback_events`; persisted
+callback events remain for reminder and draft lifecycle actions only. Reply-keyboard menu buttons
+send normal text, and `src/nudge_bot/bot/routers/menu.py` handles those labels before the reminders
+text router can parse them as reminders.
+
 ## Current Session Handoff
 
 This session implemented, reviewed, and lightly stabilized the text-based `Choose time` edit flow, then added local voice/audio reminder creation.
@@ -127,7 +154,7 @@ This session implemented, reviewed, and lightly stabilized the text-based `Choos
 What changed:
 
 - `Choose time` is no longer a placeholder. Pressing it sends a normal chat message asking for a new time, with a `Cancel` button.
-- The edit state is durable: `ReminderEditTimeService` creates or reuses a pending `DraftType.REMINDER_EDIT_TIME` draft.
+- The edit state is durable: `ReminderEditTimeService` creates or reuses a pending `DraftTypeEnum.REMINDER_EDIT_TIME` draft.
 - The next user text message is parsed through the existing `parse_reminder_text` path, but only `due_at` is applied. `reminder_text` stays unchanged.
 - Successful edit-time application moves the same reminder to `snoozed` at the chosen UTC due time.
 - Cancelling closes the edit-time draft and deletes only the prompt message, leaving the original fired reminder message intact.
@@ -166,7 +193,7 @@ Voice input added:
 - Voice transcription is warmed at bot startup when possible and uses fast single-beam decoding, no timestamps, no previous-text conditioning, and VAD filtering.
 - The bot immediately sends `Transcribing...` for accepted voice/audio messages, then edits that message with the final reminder result.
 - Transcripts are routed through the shared reminder intake path. Confident parses create reminders directly; uncertain parses create confirmation drafts.
-- Voice-created reminders and confirmed voice drafts use `ReminderSourceType.VOICE`.
+- Voice-created reminders and confirmed voice drafts use `ReminderSourceTypeEnum.VOICE`.
 - Voice metadata is stored in JSON metadata/payload without raw audio or duplicate transcript text: language, duration, model, Telegram `file_unique_id`, and MIME type.
 - Voice messages do not satisfy pending `Choose time` edit drafts; the bot asks the user to send the new time as text or press `Cancel`.
 - Auto-repeat cleanup now uses the previous successful `reminder_attempts.telegram_message_id`: after sending a timeout repeat for a reminder that was already `sent`, the worker deletes the previous fired message, or removes its inline keyboard if deletion fails.
@@ -194,4 +221,39 @@ Important implementation files touched:
 
 Start from `.agent/execplans/tg-reminder-bot-mvp.md`.
 
-Concrete next step: update `uv.lock` and run `uv sync` when network access is available, then run a real local Telegram smoke test with a short Russian voice reminder after `faster-whisper` downloads the local model. Keep PostgreSQL race/multi-worker integration coverage deferred unless the plan is explicitly reopened for hardening.
+Concrete next step: run a real local Telegram smoke test that opens `/menu`, changes timezone and
+repeat interval presets, checks active/history/archive screens, then creates and completes a short
+text reminder to verify the archive dashboard. Keep PostgreSQL race/multi-worker integration
+coverage deferred unless the plan is explicitly reopened for hardening.
+
+## Northflank CI/CD Handoff
+
+Deployment documentation lives in `docs/deployment-northflank.md`. The repository has a GitHub
+Actions workflow at `.github/workflows/ci-cd.yml` that runs Ruff, format check, tests, and a Docker
+build. On the production branch it pushes `ghcr.io/<github-owner>/nudge-bot:latest` and calls
+Northflank deployment hooks for the two runtime services.
+
+Northflank should run one shared image as two deployment services:
+
+- `nudge-bot`: custom command `nudge-bot`; set `RUN_MIGRATIONS=true`.
+- `nudge-worker`: custom command `nudge-worker`; set `WAIT_FOR_MIGRATIONS=true`.
+
+Both services need `BOT_TOKEN`, `DATABASE_URL`, timezone/repeat defaults, scheduler interval, and
+voice settings. Northflank PostgreSQL may provide `DATABASE_URL` with `?sslmode=require`; the app and
+Alembic path normalize that for `asyncpg`, so the query parameter can stay in the environment value.
+
+GitHub repository secrets, not local `.env` values, must hold the Northflank deploy hook URLs:
+
+- `NORTHFLANK_BOT_DEPLOY_HOOK_URL`
+- `NORTHFLANK_WORKER_DEPLOY_HOOK_URL`
+
+Observed Northflank deployment issues and resolutions:
+
+- If bot logs show `TypeError: connect() got an unexpected keyword argument 'sslmode'`, ensure the
+  Alembic `DATABASE_URL` normalization fix is deployed.
+- If bot exits while downloading `faster-whisper-base` from Hugging Face without a Python traceback,
+  the small Northflank instance is likely terminating the process during voice model load. Use a
+  smaller model or disable voice warm-up for hosted testing so text reminders can start first.
+- If logs show `duplicate key value violates unique constraint "users_telegram_user_id_uidx"`, that
+  indicates a concurrent first-message race in `UserRepository.get_or_create`; the intended fix is a
+  PostgreSQL upsert on `users.telegram_user_id` plus `ON CONFLICT DO NOTHING` for `user_settings`.

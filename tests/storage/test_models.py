@@ -3,31 +3,31 @@ from __future__ import annotations
 from sqlalchemy import Enum
 
 from nudge_bot.reminders.enums import (
-    CallbackAction,
-    CallbackEventStatus,
-    DraftStatus,
-    DraftType,
-    ReminderDeliveryStatus,
-    ReminderSourceType,
-    ReminderStatus,
-    ReminderType,
+    CallbackActionEnum,
+    CallbackEventStatusEnum,
+    DraftStatusEnum,
+    DraftTypeEnum,
+    ReminderDeliveryStatusEnum,
+    ReminderSourceTypeEnum,
+    ReminderStatusEnum,
+    ReminderTypeEnum,
 )
 from nudge_bot.storage.models import CallbackEvent, Draft, Reminder, ReminderAttempt
 
 
 def test_orm_enum_columns_match_postgresql_enum_names_and_values() -> None:
     expected = {
-        Reminder.__table__.c.type: ("reminder_type", ReminderType),
-        Reminder.__table__.c.status: ("reminder_status", ReminderStatus),
-        Reminder.__table__.c.source_type: ("reminder_source_type", ReminderSourceType),
+        Reminder.__table__.c.type: ("reminder_type", ReminderTypeEnum),
+        Reminder.__table__.c.status: ("reminder_status", ReminderStatusEnum),
+        Reminder.__table__.c.source_type: ("reminder_source_type", ReminderSourceTypeEnum),
         ReminderAttempt.__table__.c.delivery_status: (
             "reminder_delivery_status",
-            ReminderDeliveryStatus,
+            ReminderDeliveryStatusEnum,
         ),
-        Draft.__table__.c.type: ("draft_type", DraftType),
-        Draft.__table__.c.status: ("draft_status", DraftStatus),
-        CallbackEvent.__table__.c.action: ("callback_action", CallbackAction),
-        CallbackEvent.__table__.c.status: ("callback_event_status", CallbackEventStatus),
+        Draft.__table__.c.type: ("draft_type", DraftTypeEnum),
+        Draft.__table__.c.status: ("draft_status", DraftStatusEnum),
+        CallbackEvent.__table__.c.action: ("callback_action", CallbackActionEnum),
+        CallbackEvent.__table__.c.status: ("callback_event_status", CallbackEventStatusEnum),
     }
 
     for column, (type_name, enum_class) in expected.items():

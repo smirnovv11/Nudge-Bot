@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from nudge_bot.storage.models import User
+from nudge_bot.storage.models import User, UserSettings
 from nudge_bot.storage.repositories.users import UserRepository
 
 
@@ -50,6 +50,39 @@ async def test_get_or_create_upserts_user_and_inserts_settings_once() -> None:
     user_reload = _compile_sql(session.scalar_statements[1])
     assert "FROM users" in user_reload
     assert "WHERE users.id" in user_reload
+
+
+@pytest.mark.asyncio
+async def test_update_settings_updates_values_independently() -> None:
+    settings = UserSettings(
+        user_id=1,
+        timezone="Europe/Warsaw",
+        repeat_interval_minutes=15,
+    )
+
+    class SettingsSession:
+        def __init__(self) -> None:
+            self.executed_statements: list[object] = []
+
+        async def execute(self, statement: object) -> None:
+            self.executed_statements.append(statement)
+
+        async def scalar(self, statement: object) -> UserSettings:
+            return settings
+
+    session = SettingsSession()
+
+    result = await UserRepository(session).update_settings(  # type: ignore[arg-type]
+        user_id=1,
+        repeat_interval_minutes=15,
+    )
+
+    assert result is settings
+
+    settings_upsert = _compile_sql(session.executed_statements[0])
+    assert "INSERT INTO user_settings" in settings_upsert
+    assert "ON CONFLICT (user_id) DO UPDATE" in settings_upsert
+    assert "repeat_interval_minutes" in settings_upsert
 
 
 def _compile_sql(statement: object) -> str:

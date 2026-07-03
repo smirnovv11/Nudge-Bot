@@ -5,24 +5,24 @@ from nudge_bot.reminders.services.edit_time import ReminderEditTimeService
 from nudge_bot.reminders.services.intake import ReminderIntakeService, TextReminderService
 from nudge_bot.reminders.services.scheduler import ReminderSchedulerService
 from nudge_bot.reminders.services.schemas import (
-    DraftActionOutcome,
+    DraftActionOutcomeEnum,
     DraftActionResult,
-    EditTimeOutcome,
+    EditTimeOutcomeEnum,
     EditTimeResult,
-    TextReminderOutcome,
+    TextReminderOutcomeEnum,
     TextReminderResult,
-    VoiceReminderOutcome,
+    VoiceReminderOutcomeEnum,
     VoiceReminderResult,
     VoiceTranscript,
-    VoiceTranscriptionOutcome,
+    VoiceTranscriptionOutcomeEnum,
     VoiceTranscriptionResult,
 )
 from nudge_bot.reminders.services.voice import FasterWhisperTranscriber, VoiceReminderService
 
 __all__ = [
-    "DraftActionOutcome",
+    "DraftActionOutcomeEnum",
     "DraftActionResult",
-    "EditTimeOutcome",
+    "EditTimeOutcomeEnum",
     "EditTimeResult",
     "DraftFlowService",
     "ReminderActionService",
@@ -30,14 +30,14 @@ __all__ = [
     "ReminderEditTimeService",
     "ReminderIntakeService",
     "ReminderSchedulerService",
-    "TextReminderOutcome",
+    "TextReminderOutcomeEnum",
     "TextReminderResult",
     "TextReminderService",
     "VoiceTranscript",
-    "VoiceReminderOutcome",
+    "VoiceReminderOutcomeEnum",
     "VoiceReminderResult",
     "VoiceReminderService",
-    "VoiceTranscriptionOutcome",
+    "VoiceTranscriptionOutcomeEnum",
     "VoiceTranscriptionResult",
     "FasterWhisperTranscriber",
 ]

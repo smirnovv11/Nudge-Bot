@@ -5,7 +5,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from nudge_bot.constants import DEFAULT_REPEAT_INTERVAL_MINUTES
-from nudge_bot.reminders.enums import CallbackAction, CallbackEventStatus, ReminderStatus
+from nudge_bot.reminders.enums import (
+    CallbackActionEnum,
+    CallbackEventStatusEnum,
+    ReminderStatusEnum,
+)
 from nudge_bot.reminders.services import ReminderActionService
 
 from .fakes import (
@@ -23,7 +27,7 @@ async def test_mark_completed_is_idempotent_for_completed_reminder() -> None:
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.COMPLETED,
+        status=ReminderStatusEnum.COMPLETED,
         due_at=completed_at,
         completed_at=completed_at,
     )
@@ -35,7 +39,7 @@ async def test_mark_completed_is_idempotent_for_completed_reminder() -> None:
         now=datetime(2026, 6, 24, 12, 0, tzinfo=UTC),
     )
 
-    assert result.status == ReminderStatus.COMPLETED
+    assert result.status == ReminderStatusEnum.COMPLETED
     assert result.changed is False
     assert reminder.completed_at == completed_at
 
@@ -46,7 +50,7 @@ async def test_snooze_updates_due_time_for_active_reminder() -> None:
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.ACTIVE,
+        status=ReminderStatusEnum.ACTIVE,
         due_at=now,
         locked_at=now,
     )
@@ -59,9 +63,9 @@ async def test_snooze_updates_due_time_for_active_reminder() -> None:
         now=now,
     )
 
-    assert result.status == ReminderStatus.SNOOZED
+    assert result.status == ReminderStatusEnum.SNOOZED
     assert result.changed is True
-    assert reminder.status == ReminderStatus.SNOOZED
+    assert reminder.status == ReminderStatusEnum.SNOOZED
     assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
     assert reminder.locked_at is None
 
@@ -73,15 +77,15 @@ async def test_repeated_repeat_callback_does_not_move_due_time_twice() -> None:
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SNOOZED,
+        status=ReminderStatusEnum.SNOOZED,
         due_at=due_at,
     )
     event = FakeCallbackEvent(
         user_id=10,
         reminder_id=1,
         callback_key="reminder:1:notification:7:action:repeat",
-        action=CallbackAction.REPEAT,
-        status=CallbackEventStatus.PROCESSED,
+        action=CallbackActionEnum.REPEAT,
+        status=CallbackEventStatusEnum.PROCESSED,
     )
 
     result = await ReminderActionService().process_callback_action(
@@ -90,7 +94,7 @@ async def test_repeated_repeat_callback_does_not_move_due_time_twice() -> None:
             callback_events=FakeCallbackEventRepository(event),
         ),
         callback_key="reminder:1:notification:7:action:repeat",
-        action=CallbackAction.REPEAT,
+        action=CallbackActionEnum.REPEAT,
         reminder_id=1,
         user_id=10,
         interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
@@ -108,15 +112,15 @@ async def test_repeated_repeat_callback_reschedules_stale_due_time_from_now() ->
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SNOOZED,
+        status=ReminderStatusEnum.SNOOZED,
         due_at=previous_due_at,
     )
     event = FakeCallbackEvent(
         user_id=10,
         reminder_id=1,
         callback_key="reminder:1:notification:7:action:repeat",
-        action=CallbackAction.REPEAT,
-        status=CallbackEventStatus.PROCESSED,
+        action=CallbackActionEnum.REPEAT,
+        status=CallbackEventStatusEnum.PROCESSED,
     )
 
     result = await ReminderActionService().process_callback_action(
@@ -125,7 +129,7 @@ async def test_repeated_repeat_callback_reschedules_stale_due_time_from_now() ->
             callback_events=FakeCallbackEventRepository(event),
         ),
         callback_key="reminder:1:notification:7:action:repeat",
-        action=CallbackAction.REPEAT,
+        action=CallbackActionEnum.REPEAT,
         reminder_id=1,
         user_id=10,
         interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
@@ -133,7 +137,7 @@ async def test_repeated_repeat_callback_reschedules_stale_due_time_from_now() ->
     )
 
     assert result.changed is True
-    assert reminder.status == ReminderStatus.SNOOZED
+    assert reminder.status == ReminderStatusEnum.SNOOZED
     assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
 
 
@@ -143,7 +147,7 @@ async def test_repeat_callback_snoozes_once_and_records_event() -> None:
     reminder = FakeReminder(
         id=1,
         user_id=10,
-        status=ReminderStatus.SENT,
+        status=ReminderStatusEnum.SENT,
         due_at=now,
     )
     callback_events = FakeCallbackEventRepository()
@@ -155,7 +159,7 @@ async def test_repeat_callback_snoozes_once_and_records_event() -> None:
     result = await ReminderActionService().process_callback_action(
         uow,
         callback_key="reminder:1:notification:7:action:repeat",
-        action=CallbackAction.REPEAT,
+        action=CallbackActionEnum.REPEAT,
         reminder_id=1,
         user_id=10,
         interval_minutes=DEFAULT_REPEAT_INTERVAL_MINUTES,
@@ -163,6 +167,6 @@ async def test_repeat_callback_snoozes_once_and_records_event() -> None:
     )
 
     assert result.changed is True
-    assert reminder.status == ReminderStatus.SNOOZED
+    assert reminder.status == ReminderStatusEnum.SNOOZED
     assert reminder.due_at == now + timedelta(minutes=DEFAULT_REPEAT_INTERVAL_MINUTES)
-    assert callback_events.added[0].status == CallbackEventStatus.PROCESSED
+    assert callback_events.added[0].status == CallbackEventStatusEnum.PROCESSED
