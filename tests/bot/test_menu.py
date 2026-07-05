@@ -227,7 +227,10 @@ def test_settings_keyboards_expose_exact_presets() -> None:
         str(interval) for interval in REPEAT_INTERVAL_PRESETS
     ]
     assert timezone_keyboard.inline_keyboard[0][0].text == "✅ Europe/Minsk"
-    assert repeat_keyboard.inline_keyboard[0][0].text == "✅ 5 min"
+    selected_repeat_buttons = [
+        row[0].text for row in repeat_keyboard.inline_keyboard[:-1] if row[0].text.startswith("✅")
+    ]
+    assert selected_repeat_buttons == ["✅ 5 min"]
 
 
 def test_reminder_list_keyboard_packs_notification_buttons_and_pagination() -> None:

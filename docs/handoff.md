@@ -226,6 +226,65 @@ repeat interval presets, checks active/history/archive screens, then creates and
 text reminder to verify the archive dashboard. Keep PostgreSQL race/multi-worker integration
 coverage deferred unless the plan is explicitly reopened for hardening.
 
+## Latest Continuation Notes
+
+Use this section as the freshest state for the next chat. It supersedes any older current-session
+details above that still describe the earlier `Choose time` or voice-input milestones as the latest
+work.
+
+Latest completed work:
+
+- User menu v1.0 is implemented as a secondary navigation surface while preserving text/voice-first
+  reminder creation.
+- `/start` and `/menu` install a persistent two-column Telegram reply keyboard near the text input.
+- Menu reply-keyboard labels are handled before the reminder text router so menu labels are not
+  parsed as reminders.
+- Settings can update `timezone` and `repeat_interval_minutes` through preset-only inline screens.
+- Active reminders, task history, and archive screens now render reminders as inline notification
+  buttons prefixed with `🔔`.
+- Reminder item buttons are intentionally no-op for now and answer "Reminder actions are coming
+  later".
+- List screens use 5-item pagination. The repository fetches one extra row to determine whether
+  there is another page.
+- Pagination controls hide unavailable edge buttons: first page shows Back/Next, middle pages show
+  Prev/Back/Next, and last page shows Prev/Back.
+- The menu edit path swallows Telegram's harmless "message is not modified" error so repeated taps
+  or unchanged edits do not log an unhandled exception.
+
+Important files for the latest menu work:
+
+- `src/nudge_bot/bot/callbacks.py`
+- `src/nudge_bot/bot/keyboards.py`
+- `src/nudge_bot/bot/routers/menu.py`
+- `src/nudge_bot/storage/repositories/reminders.py`
+- `tests/bot/test_menu.py`
+- `tests/storage/test_reminder_repository.py`
+
+Latest validation:
+
+- `$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m pytest`: 114 passed.
+- `.\.venv\Scripts\ruff.exe check .`: passed.
+- `.\.venv\Scripts\ruff.exe format --check .`: passed.
+- Pytest still reports the known Windows sandbox `.pytest_cache` access warning; it is not a test
+  failure.
+
+Known follow-up:
+
+- Menu pagination currently uses SQL `OFFSET`. If page 4-5 callbacks feel slow, instrument the DB
+  query and Telegram `edit_text` separately before changing behavior.
+- Likely optimization path: replace offset pagination with cursor pagination. Active can page by
+  `(due_at, id)`, history by `(created_at, id)`, and archive by `(completed_at, id)`.
+- Task history may also need a query-matching index such as `(user_id, created_at DESC, id DESC)`
+  with `archived_at IS NULL` if sorting is the measured bottleneck.
+
+Recommended next local smoke test:
+
+- Open `/menu`.
+- Change timezone and repeat interval presets.
+- Page through active reminders, task history, and archive.
+- Tap a reminder item and confirm it no-ops cleanly.
+- Create and complete a short text reminder, then verify it appears in archive.
+
 ## Northflank CI/CD Handoff
 
 Deployment documentation lives in `docs/deployment-northflank.md`. The repository has a GitHub
